@@ -1,0 +1,48 @@
+.timeline-container {
+  max-width: 48rem;
+  margin: 0 auto;
+  padding: 1rem;
+  color: #ffffff;
+}
+
+.timeline-container h2 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+}
+
+.timeline-steps {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+.timeline-step {
+  background-color: #374151;
+  padding: 1rem;
+  border-radius: 0.5rem;
+}
+
+.timeline-step h3 {
+  font-weight: bold;
+  font-size: 1.125rem;
+}
+
+.timeline-step p {
+  color: #d1d5db;
+}
+
+.back-link {
+  display: inline-block;
+  margin-top: 1.5rem;
+  background-color: #4b5563;
+  color: #ffffff;
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  text-decoration: none;
+  transition: background-color 0.2s;
+}
+
+.back-link:hover {
+  background-color: #6b7280;
+}

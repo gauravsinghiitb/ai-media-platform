@@ -1,0 +1,67 @@
+.home {
+  color: #ffffff;
+}
+
+.hero {
+  background-color: #111827;
+  padding: 5rem 0;
+  text-align: center;
+}
+
+.hero h1 {
+  font-size: 2.25rem;
+  font-weight: bold;
+  margin-bottom: 1rem;
+}
+
+.hero p {
+  color: #9ca3af;
+  margin-top: 1rem;
+  font-size: 1.25rem;
+}
+
+.hero button {
+  margin-top: 1.5rem;
+  background-color: #3b82f6;
+  color: #ffffff;
+  padding: 0.5rem 1.5rem;
+  border-radius: 0.5rem;
+  border: none;
+  cursor: pointer;
+  transition: background-color 0.2s;
+}
+
+.hero button:hover {
+  background-color: #2563eb;
+}
+
+.featured-section {
+  padding: 2.5rem 1rem;
+  max-width: 64rem;
+  margin: 0 auto;
+}
+
+.featured-section h2 {
+  font-size: 1.5rem;
+  font-weight: bold;
+  margin-bottom: 1.5rem;
+  text-align: center;
+}
+
+.grid {
+  display: grid;
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+  gap: 1.5rem;
+}
+
+@media (min-width: 640px) {
+  .grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}

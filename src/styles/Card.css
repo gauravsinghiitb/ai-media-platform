@@ -1,0 +1,28 @@
+.card {
+  background-color: #1f2937;
+  padding: 1rem;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+
+.card img {
+  width: 100%;
+  height: 12rem;
+  object-fit: cover;
+  border-radius: 0.25rem;
+}
+
+.card h3 {
+  font-size: 1.125rem;
+  margin-top: 0.5rem;
+  color: #ffffff;
+}
+
+.card p {
+  font-size: 0.875rem;
+  color: #9ca3af;
+  margin-top: 0.25rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
