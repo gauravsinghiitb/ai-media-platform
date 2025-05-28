@@ -3,9 +3,9 @@ import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { doc, getDoc, updateDoc } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, auth, storage } from '../firebase/firebase'; // Adjust the import path as needed
+import { db, auth, storage } from '../firebase/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
-import Card from '../components/Card'; // Import the Card component
+import Card from '../components/Card';
 
 const Profile = () => {
   const { userId } = useParams();
@@ -23,7 +23,6 @@ const Profile = () => {
   const [followersList, setFollowersList] = useState([]);
   const [followingList, setFollowingList] = useState([]);
 
-  // Fetch user data and check authentication state
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
@@ -40,11 +39,11 @@ const Profile = () => {
           setUserData({
             ...data,
             followers: data.followers || [],
-            following: data.following || []
+            following: data.following || [],
           });
           setEditForm({
             username: data.username || '',
-            bio: data.bio || ''
+            bio: data.bio || '',
           });
         } else {
           setError('User not found');
@@ -61,7 +60,6 @@ const Profile = () => {
     return () => unsubscribe();
   }, [userId]);
 
-  // Fetch followers list
   const fetchFollowersList = async () => {
     if (!userData.followers || userData.followers.length === 0) {
       setFollowersList([]);
@@ -83,7 +81,6 @@ const Profile = () => {
     }
   };
 
-  // Fetch following list
   const fetchFollowingList = async () => {
     if (!userData.following || userData.following.length === 0) {
       setFollowingList([]);
@@ -105,7 +102,6 @@ const Profile = () => {
     }
   };
 
-  // Handle clicks on Followers and Following
   const handleShowFollowers = async () => {
     await fetchFollowersList();
     setShowFollowersModal(true);
@@ -116,7 +112,6 @@ const Profile = () => {
     setShowFollowingModal(true);
   };
 
-  // Handle profile picture file selection
   const handleFileChange = (e) => {
     const file = e.target.files[0];
     if (file) {
@@ -124,7 +119,7 @@ const Profile = () => {
         setError('Please select an image file');
         return;
       }
-      if (file.size > 5 * 1024 * 1024) { // 5MB limit
+      if (file.size > 5 * 1024 * 1024) {
         setError('File size must be less than 5MB');
         return;
       }
@@ -133,7 +128,6 @@ const Profile = () => {
     }
   };
 
-  // Handle Edit Profile form submission
   const handleEditProfile = async (e) => {
     e.preventDefault();
     if (!currentUser || currentUser.uid !== userId) {
@@ -145,7 +139,7 @@ const Profile = () => {
       let profilePicUrl = userData.profilePic || '';
       if (profilePicFile) {
         const storageRef = ref(storage, `profilePictures/${userId}/${profilePicFile.name}`);
-        const uploadResult = await uploadBytes(storageRef, profilePicFile);
+        await uploadBytes(storageRef, profilePicFile);
         profilePicUrl = await getDownloadURL(storageRef);
         console.log('Profile - Uploaded profile picture URL:', profilePicUrl);
       }
@@ -154,14 +148,14 @@ const Profile = () => {
       await updateDoc(userDocRef, {
         username: editForm.username,
         bio: editForm.bio,
-        profilePic: profilePicUrl
+        profilePic: profilePicUrl,
       });
 
       setUserData((prev) => ({
         ...prev,
         username: editForm.username,
         bio: editForm.bio,
-        profilePic: profilePicUrl
+        profilePic: profilePicUrl,
       }));
       setProfilePicFile(null);
       setIsEditModalOpen(false);
@@ -171,10 +165,13 @@ const Profile = () => {
     }
   };
 
-  // Handle form input changes
   const handleInputChange = (e) => {
     const { name, value } = e.target;
     setEditForm((prev) => ({ ...prev, [name]: value }));
+  };
+
+  const handleContribute = (postId) => {
+    navigate(`/contribute/${postId}/1`);
   };
 
   if (loading) {
@@ -214,7 +211,7 @@ const Profile = () => {
         marginBottom: '30px',
         padding: '20px 0',
         borderBottom: '1px solid #FFFFFF',
-        textAlign: 'center'
+        textAlign: 'center',
       }}>
         <motion.img
           src={userData.profilePic || 'https://via.placeholder.com/100?text=Profile'}
@@ -224,7 +221,7 @@ const Profile = () => {
             height: '100px',
             borderRadius: '50%',
             objectFit: 'cover',
-            border: '2px solid #FFFFFF'
+            border: '2px solid #FFFFFF',
           }}
           onError={(e) => {
             console.error('Profile - Failed to load profile picture:', userData.profilePic);
@@ -246,7 +243,7 @@ const Profile = () => {
                   border: 'none',
                   cursor: 'pointer',
                   fontSize: '13px',
-                  fontWeight: '500'
+                  fontWeight: '500',
                 }}
                 whileHover={{ backgroundColor: '#e0e0e0', scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
@@ -287,7 +284,7 @@ const Profile = () => {
               border: 'none',
               cursor: 'pointer',
               fontSize: '14px',
-              fontWeight: '500'
+              fontWeight: '500',
             }}
             whileHover={{ color: '#e0e0e0' }}
             whileTap={{ scale: 0.95 }}
@@ -301,7 +298,7 @@ const Profile = () => {
                   left: '0',
                   width: '50%',
                   height: '2px',
-                  backgroundColor: '#FFFFFF'
+                  backgroundColor: '#FFFFFF',
                 }}
                 layoutId="underline"
               />
@@ -317,7 +314,7 @@ const Profile = () => {
               border: 'none',
               cursor: 'pointer',
               fontSize: '14px',
-              fontWeight: '500'
+              fontWeight: '500',
             }}
             whileHover={{ color: '#e0e0e0' }}
             whileTap={{ scale: 0.95 }}
@@ -331,7 +328,7 @@ const Profile = () => {
                   right: '0',
                   width: '50%',
                   height: '2px',
-                  backgroundColor: '#FFFFFF'
+                  backgroundColor: '#FFFFFF',
                 }}
                 layoutId="underline"
               />
@@ -340,16 +337,37 @@ const Profile = () => {
         </div>
       </div>
 
-      {/* Posts Grid (Instagram Style, No Gaps) */}
+      {/* Posts Grid with Contribute Button */}
       <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0px' }}>
         {postsToDisplay.length > 0 ? (
           postsToDisplay.map((post, index) => (
-            <Card
-              key={index}
-              post={post}
-              userId={view === 'myPosts' ? userId : post.originalUserId || userId}
-              aspectRatio="1:1"
-            />
+            <div key={index} style={{ position: 'relative' }}>
+              <Card
+                post={post}
+                userId={view === 'myPosts' ? userId : post.originalUserId || userId}
+                aspectRatio="1:1"
+              />
+              <motion.button
+                onClick={() => handleContribute(post.id)}
+                style={{
+                  position: 'absolute',
+                  bottom: '10px',
+                  right: '10px',
+                  backgroundColor: '#007bff',
+                  color: '#FFFFFF',
+                  padding: '5px 10px',
+                  borderRadius: '5px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  fontSize: '12px',
+                  fontWeight: '500',
+                }}
+                whileHover={{ backgroundColor: '#0056b3', scale: 1.05 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                Contribute
+              </motion.button>
+            </div>
           ))
         ) : (
           <div style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: '16px', padding: '20px' }}>
@@ -371,7 +389,7 @@ const Profile = () => {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            zIndex: 1000
+            zIndex: 1000,
           }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -387,7 +405,7 @@ const Profile = () => {
               color: '#FFFFFF',
               border: '1px solid #FFFFFF',
               maxHeight: '70vh',
-              overflowY: 'auto'
+              overflowY: 'auto',
             }}
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
@@ -402,7 +420,7 @@ const Profile = () => {
                     style={{
                       padding: '10px 0',
                       borderBottom: index < followersList.length - 1 ? '1px solid #FFFFFF' : 'none',
-                      fontSize: '16px'
+                      fontSize: '16px',
                     }}
                   >
                     {username}
@@ -424,7 +442,7 @@ const Profile = () => {
                 color: '#FFFFFF',
                 cursor: 'pointer',
                 fontSize: '14px',
-                fontWeight: '500'
+                fontWeight: '500',
               }}
               whileHover={{ backgroundColor: '#1a1a1a', scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -448,7 +466,7 @@ const Profile = () => {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            zIndex: 1000
+            zIndex: 1000,
           }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -464,7 +482,7 @@ const Profile = () => {
               color: '#FFFFFF',
               border: '1px solid #FFFFFF',
               maxHeight: '70vh',
-              overflowY: 'auto'
+              overflowY: 'auto',
             }}
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
@@ -479,7 +497,7 @@ const Profile = () => {
                     style={{
                       padding: '10px 0',
                       borderBottom: index < followingList.length - 1 ? '1px solid #FFFFFF' : 'none',
-                      fontSize: '16px'
+                      fontSize: '16px',
                     }}
                   >
                     {username}
@@ -501,7 +519,7 @@ const Profile = () => {
                 color: '#FFFFFF',
                 cursor: 'pointer',
                 fontSize: '14px',
-                fontWeight: '500'
+                fontWeight: '500',
               }}
               whileHover={{ backgroundColor: '#1a1a1a', scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -525,7 +543,7 @@ const Profile = () => {
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
-            zIndex: 1000
+            zIndex: 1000,
           }}
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
@@ -539,7 +557,7 @@ const Profile = () => {
               width: '400px',
               maxWidth: '90%',
               color: '#FFFFFF',
-              border: '1px solid #FFFFFF'
+              border: '1px solid #FFFFFF',
             }}
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
@@ -561,7 +579,7 @@ const Profile = () => {
                     border: '1px solid #FFFFFF',
                     backgroundColor: '#000000',
                     color: '#FFFFFF',
-                    fontSize: '14px'
+                    fontSize: '14px',
                   }}
                 />
               </div>
@@ -580,7 +598,7 @@ const Profile = () => {
                     color: '#FFFFFF',
                     resize: 'vertical',
                     minHeight: '80px',
-                    fontSize: '14px'
+                    fontSize: '14px',
                   }}
                 />
               </div>
@@ -597,7 +615,7 @@ const Profile = () => {
                     border: '1px solid #FFFFFF',
                     backgroundColor: '#000000',
                     color: '#FFFFFF',
-                    fontSize: '14px'
+                    fontSize: '14px',
                   }}
                 />
                 {profilePicFile && (
@@ -618,7 +636,7 @@ const Profile = () => {
                     color: '#000000',
                     cursor: 'pointer',
                     fontSize: '14px',
-                    fontWeight: '500'
+                    fontWeight: '500',
                   }}
                   whileHover={{ backgroundColor: '#e0e0e0', scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
@@ -636,7 +654,7 @@ const Profile = () => {
                     color: '#FFFFFF',
                     cursor: 'pointer',
                     fontSize: '14px',
-                    fontWeight: '500'
+                    fontWeight: '500',
                   }}
                   whileHover={{ backgroundColor: '#1a1a1a', scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}

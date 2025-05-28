@@ -16,8 +16,8 @@ const LoadingSpinner = () => {
       zIndex: 1000 // Ensure it appears above other content
     }}>
       <img
-        src="/logo.png"
-        alt="Nexlify Logo"
+        src="/logo_white_new.png"
+        alt="Kryoon Logo"
         style={{
           width: '48px',
           height: '48px',

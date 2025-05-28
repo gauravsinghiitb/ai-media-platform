@@ -49,7 +49,7 @@ const Navbar = () => {
         {/* Brand Logo and Name */}
           {/* Brand Logo and Name */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/logo.png" alt="Nexlify Logo" style={{ width: '30px', height: '30px' }} />
+          <img src="/logo_white_new.png" alt="Nexlify Logo" style={{ width: '30px', height: '30px' }} />
           <div style={{
             fontSize: '24px',
             fontWeight: 'bold',
