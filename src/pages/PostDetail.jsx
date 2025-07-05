@@ -1,9 +1,10 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { useParams, useNavigate, Link } from 'react-router-dom';
-import { db } from '../firebase/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { db, storage } from '../firebase/firebase';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { auth } from '../firebase/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
+import { ref, getDownloadURL } from 'firebase/storage';
 import { FaHeart, FaRegHeart, FaPlay, FaBookmark, FaRegBookmark, FaShareAlt, FaRegComment, FaReply, FaCopy } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 
@@ -23,9 +24,12 @@ const PostDetail = () => {
   const [showShareModal, setShowShareModal] = useState(false);
   const [showOriginalModal, setShowOriginalModal] = useState(false);
   const [showComments, setShowComments] = useState(false);
-  const [showFullPrompt, setShowFullPrompt] = useState(false); // State for prompt expansion
+  const [showFullPrompt, setShowFullPrompt] = useState(false);
   const videoRef = useRef(null);
   const commentInputRef = useRef(null);
+
+  console.log('PostDetail - userId from URL:', userId);
+  console.log('PostDetail - postId from URL:', postId);
 
   const profanityList = [
     'nigga',
@@ -39,13 +43,14 @@ const PostDetail = () => {
     'piss'
   ];
 
-  const isVideo = post && post.aiGeneratedUrl && (() => {
+  const isVideo = useMemo(() => {
+    if (!post || !post.aiGeneratedUrl) return false;
     const extension = post.aiGeneratedUrl.split('.').pop().split('?')[0].toLowerCase();
     const videoExtensions = ['mp4', 'webm', 'ogg'];
     const result = videoExtensions.includes(extension);
     console.log(`PostDetail - Checking if URL is video: ${post.aiGeneratedUrl}, Extension: ${extension}, IsVideo: ${result}`);
     return result;
-  })();
+  }, [post?.aiGeneratedUrl]);
 
   useEffect(() => {
     const fetchPostAndUser = async () => {
@@ -55,9 +60,53 @@ const PostDetail = () => {
           throw new Error('Missing userId or postId');
         }
 
-        console.log(`Fetching user document for userId: ${userId}`);
+        console.log(`Fetching post document for postId: ${postId}`);
+
+        // Fetch the post document from the posts collection
+        const postDocRef = doc(db, 'posts', postId);
+        const postDoc = await getDoc(postDocRef);
+        if (!postDoc.exists()) {
+          throw new Error('Post not found');
+        }
+
+        let postData = postDoc.data();
+        console.log('PostDetail - Fetched post data:', postData);
+
+        // Verify the post belongs to the user
+        if (postData.userId !== userId) {
+          throw new Error('Post does not belong to this user');
+        }
+
+        // Resolve aiGeneratedUrl if it's a storage path
+        let resolvedAiGeneratedUrl = postData.aiGeneratedUrl;
+        if (resolvedAiGeneratedUrl && !resolvedAiGeneratedUrl.startsWith('https://')) {
+          try {
+            const storageRef = ref(storage, resolvedAiGeneratedUrl);
+            resolvedAiGeneratedUrl = await getDownloadURL(storageRef);
+            console.log('PostDetail - Resolved aiGeneratedUrl:', resolvedAiGeneratedUrl);
+          } catch (err) {
+            console.error('PostDetail - Failed to resolve aiGeneratedUrl:', err);
+            resolvedAiGeneratedUrl = 'https://via.placeholder.com/400?text=Media+Not+Found';
+          }
+        }
+        postData = { ...postData, aiGeneratedUrl: resolvedAiGeneratedUrl };
+
+        // Resolve originalUrl if present and it's a storage path
+        let resolvedOriginalUrl = postData.originalUrl;
+        if (resolvedOriginalUrl && !resolvedOriginalUrl.startsWith('https://')) {
+          try {
+            const storageRef = ref(storage, resolvedOriginalUrl);
+            resolvedOriginalUrl = await getDownloadURL(storageRef);
+            console.log('PostDetail - Resolved originalUrl:', resolvedOriginalUrl);
+          } catch (err) {
+            console.error('PostDetail - Failed to resolve originalUrl:', err);
+            resolvedOriginalUrl = 'https://via.placeholder.com/120?text=Original';
+          }
+        }
+        postData = { ...postData, originalUrl: resolvedOriginalUrl };
 
         // Fetch the user document
+        console.log(`Fetching user document for userId: ${userId}`);
         const userDocRef = doc(db, 'users', userId);
         const userDoc = await getDoc(userDocRef);
         if (!userDoc.exists()) {
@@ -69,28 +118,13 @@ const PostDetail = () => {
           username: userData.username,
           profilePic: userData.profilePic,
           bio: userData.bio,
-          posts: userData.posts,
-          savedPosts: userData.savedPosts,
         });
 
-        // Ensure we're only accessing allowed fields
         setUserProfilePic(userData.profilePic || 'https://via.placeholder.com/30?text=User');
-
-        // Find the post within the user's posts array
-        if (!userData.posts || !Array.isArray(userData.posts)) {
-          throw new Error('Posts array not found in user document');
-        }
-
-        const foundPost = userData.posts.find((p) => p.createdAt === postId);
-        if (!foundPost) {
-          throw new Error('Post not found');
-        }
-
-        console.log('PostDetail - Fetched post:', foundPost);
-        setPost({ ...foundPost, username: userData.username });
+        setPost({ ...postData, username: userData.username?.username || 'user' }); // Fixed: Extract the username string
 
         // Check if the current user has liked the post
-        if (user && foundPost.likedBy && foundPost.likedBy.includes(user.uid)) {
+        if (user && postData.likedBy && postData.likedBy.includes(user.uid)) {
           setIsLiked(true);
         }
       } catch (err) {
@@ -100,7 +134,7 @@ const PostDetail = () => {
           setTimeout(() => {
             navigate('/');
           }, 3000);
-        } else if (err.message === 'Post not found') {
+        } else if (err.message === 'Post not found' || err.message === 'Post does not belong to this user') {
           setError('The post you are trying to access does not exist.');
           setTimeout(() => {
             navigate(`/profile/${userId}`);
@@ -121,17 +155,10 @@ const PostDetail = () => {
     const checkSavedStatus = async (currentUser) => {
       if (currentUser) {
         try {
-          const userDocRef = doc(db, 'users', currentUser.uid);
-          const userDoc = await getDoc(userDocRef);
-          if (userDoc.exists()) {
-            const userData = userDoc.data();
-            console.log('PostDetail - Fetched savedPosts for user:', userData.savedPosts);
-            const savedPosts = userData.savedPosts || [];
-            if (savedPosts.some(saved => saved.postId === postId && saved.originalUserId === userId)) {
-              setIsSaved(true);
-            }
-          } else {
-            console.warn('PostDetail - Current user document not found:', currentUser.uid);
+          const savedPostDocRef = doc(db, 'posts', 'usersavedpost', currentUser.uid, postId);
+          const savedPostDoc = await getDoc(savedPostDocRef);
+          if (savedPostDoc.exists()) {
+            setIsSaved(true);
           }
         } catch (err) {
           console.error('PostDetail - Error checking saved status:', err);
@@ -217,36 +244,23 @@ const PostDetail = () => {
     }
 
     try {
-      const userDocRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const updatedPosts = userData.posts.map((p) => {
-          if (p.createdAt === postId) {
-            let updatedLikedBy = p.likedBy || [];
-            if (isLiked) {
-              updatedLikedBy = updatedLikedBy.filter(uid => uid !== user.uid);
-            } else {
-              if (!updatedLikedBy.includes(user.uid)) {
-                updatedLikedBy.push(user.uid);
-              }
-            }
-            return { ...p, likedBy: updatedLikedBy };
-          }
-          return p;
-        });
-
-        await updateDoc(userDocRef, { posts: updatedPosts });
-        setPost((prev) => ({
-          ...prev,
-          likedBy: updatedPosts.find(p => p.createdAt === postId).likedBy,
-        }));
-        setIsLiked(!isLiked);
-        console.log('PostDetail - Like updated successfully, likedBy:', updatedPosts.find(p => p.createdAt === postId).likedBy);
+      const postDocRef = doc(db, 'posts', postId);
+      let updatedLikedBy = post.likedBy || [];
+      if (isLiked) {
+        updatedLikedBy = updatedLikedBy.filter(uid => uid !== user.uid);
       } else {
-        console.error('PostDetail - User document not found during like update:', userId);
-        setError('User not found');
+        if (!updatedLikedBy.includes(user.uid)) {
+          updatedLikedBy.push(user.uid);
+        }
       }
+
+      await updateDoc(postDocRef, { likedBy: updatedLikedBy });
+      setPost((prev) => ({
+        ...prev,
+        likedBy: updatedLikedBy,
+      }));
+      setIsLiked(!isLiked);
+      console.log('PostDetail - Like updated successfully, likedBy:', updatedLikedBy);
     } catch (err) {
       console.error('PostDetail - Error updating likes:', err);
       if (err.code === 'permission-denied') {
@@ -284,51 +298,39 @@ const PostDetail = () => {
     }
 
     try {
-      const userDocRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
+      const postDocRef = doc(db, 'posts', postId);
       const commenterDocRef = doc(db, 'users', user.uid);
       const commenterDoc = await getDoc(commenterDocRef);
       const commenterData = commenterDoc.exists() ? commenterDoc.data() : {};
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const newComment = {
-          username: commenterData.username || 'Anonymous',
-          userId: user.uid,
-          profilePic: commenterData.profilePic || 'https://via.placeholder.com/30?text=User',
-          comment: filterProfanity(comment.trim()),
-          timestamp: new Date().toISOString(),
-          likes: [],
-          replies: [],
-        };
-        const updatedPosts = userData.posts.map((p) => {
-          if (p.createdAt === postId) {
-            let updatedComments = p.comments || [];
-            if (parentCommentId) {
-              updatedComments = updatedComments.map((c, index) => {
-                if (index === parseInt(parentCommentId)) {
-                  const updatedReplies = c.replies ? [...c.replies, newComment] : [newComment];
-                  return { ...c, replies: updatedReplies };
-                }
-                return c;
-              });
-            } else {
-              updatedComments = [...updatedComments, newComment];
-            }
-            return { ...p, comments: updatedComments };
-          }
-          return p;
-        });
+      const newComment = {
+        username: commenterData.username?.username || 'Anonymous', // Adjusted for nested username object
+        userId: user.uid,
+        profilePic: commenterData.profilePic || 'https://via.placeholder.com/30?text=User',
+        comment: filterProfanity(comment.trim()),
+        timestamp: new Date().toISOString(),
+        likes: [],
+        replies: [],
+      };
 
-        await updateDoc(userDocRef, { posts: updatedPosts });
-        setPost((prev) => ({
-          ...prev,
-          comments: updatedPosts.find(p => p.createdAt === postId).comments,
-        }));
-        setComment('');
+      let updatedComments = post.comments || [];
+      if (parentCommentId) {
+        updatedComments = updatedComments.map((c, index) => {
+          if (index === parseInt(parentCommentId)) {
+            const updatedReplies = c.replies ? [...c.replies, newComment] : [newComment];
+            return { ...c, replies: updatedReplies };
+          }
+          return c;
+        });
       } else {
-        console.error('PostDetail - User document not found during comment submission:', userId);
-        setError('User not found');
+        updatedComments = [...updatedComments, newComment];
       }
+
+      await updateDoc(postDocRef, { comments: updatedComments });
+      setPost((prev) => ({
+        ...prev,
+        comments: updatedComments,
+      }));
+      setComment('');
     } catch (err) {
       console.error('PostDetail - Error adding comment:', err);
       if (err.code === 'permission-denied') {
@@ -346,38 +348,25 @@ const PostDetail = () => {
     }
 
     try {
-      const userDocRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const updatedPosts = userData.posts.map((p) => {
-          if (p.createdAt === postId) {
-            const updatedComments = p.comments.map((c, idx) => {
-              if (idx === commentIndex) {
-                let updatedLikes = c.likes || [];
-                if (updatedLikes.includes(user.uid)) {
-                  updatedLikes = updatedLikes.filter(uid => uid !== user.uid);
-                } else {
-                  updatedLikes.push(user.uid);
-                }
-                return { ...c, likes: updatedLikes };
-              }
-              return c;
-            });
-            return { ...p, comments: updatedComments };
+      const postDocRef = doc(db, 'posts', postId);
+      const updatedComments = post.comments.map((c, idx) => {
+        if (idx === commentIndex) {
+          let updatedLikes = c.likes || [];
+          if (updatedLikes.includes(user.uid)) {
+            updatedLikes = updatedLikes.filter(uid => uid !== user.uid);
+          } else {
+            updatedLikes.push(user.uid);
           }
-          return p;
-        });
+          return { ...c, likes: updatedLikes };
+        }
+        return c;
+      });
 
-        await updateDoc(userDocRef, { posts: updatedPosts });
-        setPost((prev) => ({
-          ...prev,
-          comments: updatedPosts.find(p => p.createdAt === postId).comments,
-        }));
-      } else {
-        console.error('PostDetail - User document not found during comment like:', userId);
-        setError('User not found');
-      }
+      await updateDoc(postDocRef, { comments: updatedComments });
+      setPost((prev) => ({
+        ...prev,
+        comments: updatedComments,
+      }));
     } catch (err) {
       console.error('PostDetail - Error liking comment:', err);
       if (err.code === 'permission-denied') {
@@ -395,44 +384,31 @@ const PostDetail = () => {
     }
 
     try {
-      const userDocRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const updatedPosts = userData.posts.map((p) => {
-          if (p.createdAt === postId) {
-            const updatedComments = p.comments.map((c, idx) => {
-              if (idx === commentIndex) {
-                const updatedReplies = c.replies.map((r, rIdx) => {
-                  if (rIdx === replyIndex) {
-                    let updatedLikes = r.likes || [];
-                    if (updatedLikes.includes(user.uid)) {
-                      updatedLikes = updatedLikes.filter(uid => uid !== user.uid);
-                    } else {
-                      updatedLikes.push(user.uid);
-                    }
-                    return { ...r, likes: updatedLikes };
-                  }
-                  return r;
-                });
-                return { ...c, replies: updatedReplies };
+      const postDocRef = doc(db, 'posts', postId);
+      const updatedComments = post.comments.map((c, idx) => {
+        if (idx === commentIndex) {
+          const updatedReplies = c.replies.map((r, rIdx) => {
+            if (rIdx === replyIndex) {
+              let updatedLikes = r.likes || [];
+              if (updatedLikes.includes(user.uid)) {
+                updatedLikes = updatedLikes.filter(uid => uid !== user.uid);
+              } else {
+                updatedLikes.push(user.uid);
               }
-              return c;
-            });
-            return { ...p, comments: updatedComments };
-          }
-          return p;
-        });
+              return { ...r, likes: updatedLikes };
+            }
+            return r;
+          });
+          return { ...c, replies: updatedReplies };
+        }
+        return c;
+      });
 
-        await updateDoc(userDocRef, { posts: updatedPosts });
-        setPost((prev) => ({
-          ...prev,
-          comments: updatedPosts.find(p => p.createdAt === postId).comments,
-        }));
-      } else {
-        console.error('PostDetail - User document not found during reply like:', userId);
-        setError('User not found');
-      }
+      await updateDoc(postDocRef, { comments: updatedComments });
+      setPost((prev) => ({
+        ...prev,
+        comments: updatedComments,
+      }));
     } catch (err) {
       console.error('PostDetail - Error liking reply:', err);
       if (err.code === 'permission-denied') {
@@ -458,7 +434,7 @@ const PostDetail = () => {
       navigate('/login');
       return;
     }
-    navigate(`/contribute/${userId}/${postId}/1`);
+    navigate(`/contribute/${userId}/${postId}/1`); // Include nodeId as '1' for the parent node
   };
 
   const handleSave = async () => {
@@ -468,32 +444,26 @@ const PostDetail = () => {
     }
 
     try {
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        let updatedSavedPosts = userData.savedPosts || [];
-        if (isSaved) {
-          updatedSavedPosts = updatedSavedPosts.filter(saved => !(saved.postId === postId && saved.originalUserId === userId));
-          setIsSaved(false);
-        } else {
-          const postToSave = {
-            postId: postId,
-            originalUserId: userId,
-            aiGeneratedUrl: post.aiGeneratedUrl,
-            caption: post.caption,
-            modelUsed: post.modelUsed,
-            username: post.username,
-            createdAt: post.createdAt,
-          };
-          updatedSavedPosts.push(postToSave);
-          setIsSaved(true);
-        }
-        await updateDoc(userDocRef, { savedPosts: updatedSavedPosts });
-        console.log('PostDetail - Save status updated:', isSaved ? 'Unsaved' : 'Saved');
+      const savedPostDocRef = doc(db, 'posts', 'usersavedpost', user.uid, postId);
+      if (isSaved) {
+        // Unsave the post by deleting the document
+        await setDoc(savedPostDocRef, {}, { merge: false }); // Firestore doesn't have a direct delete in this context, so we overwrite with empty data
+        setIsSaved(false);
+        console.log('PostDetail - Post unsaved successfully');
       } else {
-        console.error('PostDetail - Current user document not found during save:', user.uid);
-        setError('Failed to save post: User document not found');
+        // Save the post
+        const postToSave = {
+          postId: postId,
+          originalUserId: userId,
+          aiGeneratedUrl: post.aiGeneratedUrl,
+          caption: post.caption,
+          modelUsed: post.modelUsed,
+          username: post.username,
+          createdAt: post.createdAt,
+        };
+        await setDoc(savedPostDocRef, postToSave);
+        setIsSaved(true);
+        console.log('PostDetail - Post saved successfully');
       }
     } catch (err) {
       console.error('PostDetail - Error saving post:', err);
@@ -545,7 +515,6 @@ const PostDetail = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
-  // Function to truncate prompt to 70 words
   const truncatePrompt = (prompt) => {
     const words = prompt.split(/\s+/);
     if (words.length <= 70) return { truncated: prompt, needsTruncation: false };
@@ -594,7 +563,6 @@ const PostDetail = () => {
           top: 0
         }
       }}>
-        {/* AI-Generated Media */}
         <motion.div
           style={{
             borderRadius: '8px',
@@ -709,7 +677,6 @@ const PostDetail = () => {
       }}>
         {/* Post Info Section */}
         <div style={{ marginBottom: '1rem' }}>
-          {/* Username and Profile Pic */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -757,7 +724,6 @@ const PostDetail = () => {
             </Link>
           </div>
 
-          {/* Caption */}
           {post.caption && (
             <p style={{
               fontSize: '14px',
@@ -767,7 +733,6 @@ const PostDetail = () => {
             </p>
           )}
 
-          {/* Like, Share, Save (Reordered: Like, Share, Save) */}
           <div style={{
             display: 'flex',
             gap: '1rem',
@@ -819,24 +784,21 @@ const PostDetail = () => {
             </motion.button>
           </div>
 
-          {/* Posted Date (Moved to Right Bottom) */}
           <p style={{
             fontSize: '14px',
             color: '#CCCCCC',
             textAlign: 'right'
           }}>
-            Posted on: {new Date(post.createdAt).toLocaleString()}
+            Posted on: {post.createdAt?.toDate ? post.createdAt.toDate().toLocaleString() : new Date(post.createdAt).toLocaleString()}
           </p>
         </div>
 
-        {/* Separator */}
         <hr style={{
           border: 'none',
           borderTop: '1px solid #333333',
           margin: '0.8rem 0'
         }} />
 
-        {/* Model Info Section */}
         <div style={{
           display: 'flex',
           alignItems: 'center',
@@ -886,8 +848,8 @@ const PostDetail = () => {
             onClick={handleContribute}
             style={{
               padding: '8px 12px',
-              background: 'linear-gradient(45deg, #007bff, #0056b3)',
-              color: '#FFFFFF',
+              background: 'linear-gradient(45deg, #FFD700, #FFA500)', // Gold to orange gradient
+              color: '#000000',
               borderRadius: '4px',
               border: '1px solid #FFFFFF',
               cursor: 'pointer',
@@ -895,7 +857,7 @@ const PostDetail = () => {
               fontWeight: '500',
               textAlign: 'center',
               minWidth: '100px',
-              boxShadow: '0 0 5px rgba(0, 123, 255, 0.2)'
+              boxShadow: '0 0 5px rgba(255, 215, 0, 0.2)'
             }}
             whileHover={{ scale: 1.05 }}
           >
@@ -903,7 +865,6 @@ const PostDetail = () => {
           </motion.button>
         </div>
 
-        {/* Original Content Section (No Separator Above) */}
         {(post.originalUrl || post.promptUsed) && (
           <div style={{
             display: 'flex',
@@ -1000,16 +961,13 @@ const PostDetail = () => {
           </div>
         )}
 
-        {/* Separator */}
         <hr style={{
           border: 'none',
           borderTop: '1px solid #333333',
           margin: '0.8rem 0'
         }} />
 
-        {/* Comments Section */}
         <div style={{ marginBottom: '0.8rem' }}>
-          {/* View Comments Button */}
           <motion.button
             onClick={() => setShowComments(!showComments)}
             style={{
@@ -1028,14 +986,12 @@ const PostDetail = () => {
             <FaRegComment size={20} /> {post.comments ? post.comments.length : 0} Comments
           </motion.button>
 
-          {/* Comments (shown only if showComments is true) */}
           {showComments && (
             <>
               <div style={{ marginTop: '0.8rem', marginBottom: '0.8rem' }}>
                 {post.comments && post.comments.length > 0 ? (
                   post.comments.map((c, index) => (
                     <div key={index} style={{ marginBottom: '0.8rem' }}>
-                      {/* Main Comment */}
                       <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
                         <img
                           src={c.profilePic}
@@ -1067,7 +1023,7 @@ const PostDetail = () => {
                             >
                               @{c.username}
                             </Link>
-                            <p style={{ fontSize: '12px', color: '##CCCCCC' }}>
+                            <p style={{ fontSize: '12px', color: '#CCCCCC' }}>
                               {formatTimestamp(c.timestamp)}
                             </p>
                           </div>
@@ -1109,7 +1065,6 @@ const PostDetail = () => {
                           </div>
                         </div>
                       </div>
-                      {/* Replies (Threaded) */}
                       {c.replies && c.replies.length > 0 && (
                         <div style={{ marginLeft: '1.5rem', marginTop: '0.5rem', position: 'relative' }}>
                           <div style={{
@@ -1199,7 +1154,6 @@ const PostDetail = () => {
                 )}
               </div>
 
-              {/* Comment Input */}
               <div style={{
                 display: 'flex',
                 gap: '0.5rem',
@@ -1250,7 +1204,6 @@ const PostDetail = () => {
         </div>
       </div>
 
-      {/* Share Modal */}
       {showShareModal && (
         <motion.div
           style={{
@@ -1343,7 +1296,6 @@ const PostDetail = () => {
         </motion.div>
       )}
 
-      {/* Original Image/Video Modal (Card Size) */}
       {showOriginalModal && post.originalUrl && (
         <motion.div
           style={{

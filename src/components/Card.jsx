@@ -2,54 +2,69 @@ import React, { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { FaHeart, FaRegHeart, FaBookmark } from 'react-icons/fa';
 import { db } from '../firebase/firebase';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
+import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { auth } from '../firebase/firebase';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const Card = ({ post, userId, aspectRatio = "1:1" }) => {
+const Card = ({ item, userId, aspectRatio = "1:1" }) => {
   const navigate = useNavigate();
   const [isHovered, setIsHovered] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
+  const [isSaved, setIsSaved] = useState(false);
   const [mediaError, setMediaError] = useState(false);
-  const [likes, setLikes] = useState(post?.likedBy?.length || 0);
+  const [likes, setLikes] = useState((item?.likedBy || []).length);
   const [user, setUser] = useState(null);
 
   // Robust isVideo check
-  const isVideo = post && post.aiGeneratedUrl && (() => {
-    const extension = post.aiGeneratedUrl.split('.').pop().split('?')[0].toLowerCase();
+  const isVideo = item && item.aiGeneratedUrl && (() => {
+    const extension = item.aiGeneratedUrl.split('.').pop().split('?')[0].toLowerCase();
     const videoExtensions = ['mp4', 'webm', 'ogg'];
     const result = videoExtensions.includes(extension);
-    console.log(`Card - Checking if URL is video: ${post.aiGeneratedUrl}, Extension: ${extension}, IsVideo: ${result}`);
+    console.log(`Card - Checking if URL is video: ${item.aiGeneratedUrl}, Extension: ${extension}, IsVideo: ${result}`);
     return result;
   })();
 
-  // Check user authentication and like status
+  // Check user authentication, like, and save status
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
-      if (currentUser && post.likedBy && post.likedBy.includes(currentUser.uid)) {
-        setIsLiked(true);
+      if (currentUser && item) {
+        // Check like status
+        const likedBy = item.likedBy || [];
+        if (likedBy.includes(currentUser.uid)) {
+          setIsLiked(true);
+        }
+        // Check save status
+        try {
+          const savedPostDocRef = doc(db, 'posts', 'usersavedpost', currentUser.uid, item.id);
+          const savedPostDoc = await getDoc(savedPostDocRef);
+          if (savedPostDoc.exists()) {
+            setIsSaved(true);
+          }
+        } catch (err) {
+          console.error('Card - Error checking saved status:', err);
+        }
       }
     });
 
     return () => unsubscribe();
-  }, [post.likedBy]);
+  }, [item?.likedBy, item?.id]);
 
   // Log video URL and check accessibility
   useEffect(() => {
-    if (!post || !post.aiGeneratedUrl) {
-      console.log('Card - Post or aiGeneratedUrl is missing:', { post });
+    if (!item || !item.aiGeneratedUrl) {
+      console.log('Card - Item or aiGeneratedUrl is missing:', { item });
       setMediaError(true);
-    } else if (post.aiGeneratedUrl.startsWith('gs://')) {
-      console.error('Card - Invalid URL format: aiGeneratedUrl should be an HTTP URL, not a gs:// URI:', post.aiGeneratedUrl);
+    } else if (item.aiGeneratedUrl.startsWith('gs://')) {
+      console.error('Card - Invalid URL format: aiGeneratedUrl should be an HTTP URL, not a gs:// URI:', item.aiGeneratedUrl);
       setMediaError(true);
     } else if (isVideo) {
-      console.log('Card - Video URL:', post.aiGeneratedUrl);
-      fetch(post.aiGeneratedUrl, { method: 'HEAD' })
+      console.log('Card - Video URL:', item.aiGeneratedUrl);
+      fetch(item.aiGeneratedUrl, { method: 'HEAD' })
         .then(response => {
           if (response.ok) {
-            console.log('Card - Video URL is accessible:', post.aiGeneratedUrl);
+            console.log('Card - Video URL is accessible:', item.aiGeneratedUrl);
           } else {
             console.error('Card - Video URL is not accessible:', response.status, response.statusText);
             setMediaError(true);
@@ -60,12 +75,12 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
           setMediaError(true);
         });
     } else {
-      console.log('Card - Not a video, treating as image:', post.aiGeneratedUrl);
+      console.log('Card - Not a video, treating as image:', item.aiGeneratedUrl);
     }
-  }, [post?.aiGeneratedUrl, isVideo]);
+  }, [item?.aiGeneratedUrl, isVideo]);
 
   const handleClick = () => {
-    navigate(`/post/${userId}/${post.createdAt}`);
+    navigate(`/post/${userId}/${item?.id}`);
   };
 
   const handleLike = async (e) => {
@@ -76,31 +91,20 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
     }
 
     try {
-      const userDocRef = doc(db, 'users', userId);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const updatedPosts = userData.posts.map((p) => {
-          if (p.createdAt === post.createdAt) {
-            let updatedLikedBy = p.likedBy || [];
-            if (isLiked) {
-              updatedLikedBy = updatedLikedBy.filter(uid => uid !== user.uid);
-            } else {
-              if (!updatedLikedBy.includes(user.uid)) {
-                updatedLikedBy.push(user.uid);
-              }
-            }
-            return { ...p, likedBy: updatedLikedBy };
-          }
-          return p;
-        });
-
-        await updateDoc(userDocRef, { posts: updatedPosts });
-        const updatedPost = updatedPosts.find(p => p.createdAt === post.createdAt);
-        setLikes(updatedPost.likedBy.length);
-        setIsLiked(!isLiked);
-        console.log('Card - Like updated successfully, likedBy:', updatedPost.likedBy);
+      const postDocRef = doc(db, 'posts', item.id);
+      let updatedLikedBy = item.likedBy || [];
+      if (isLiked) {
+        updatedLikedBy = updatedLikedBy.filter(uid => uid !== user.uid);
+      } else {
+        if (!updatedLikedBy.includes(user.uid)) {
+          updatedLikedBy.push(user.uid);
+        }
       }
+
+      await updateDoc(postDocRef, { likedBy: updatedLikedBy });
+      setLikes(updatedLikedBy.length);
+      setIsLiked(!isLiked);
+      console.log('Card - Like updated successfully, likedBy:', updatedLikedBy);
     } catch (err) {
       console.error('Card - Error updating likes:', err);
     }
@@ -114,29 +118,24 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
     }
 
     try {
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists()) {
-        const userData = userDoc.data();
-        const savedPosts = userData.savedPosts || [];
-        if (savedPosts.some(saved => saved.postId === post.createdAt && saved.originalUserId === userId)) {
-          console.log('Card - Post already saved:', post.createdAt);
-          return;
-        }
-        const postToSave = {
-          postId: post.createdAt,
-          originalUserId: userId,
-          aiGeneratedUrl: post.aiGeneratedUrl,
-          caption: post.caption,
-          modelUsed: post.modelUsed,
-          username: post.username,
-          createdAt: post.createdAt,
-        };
-        const updatedSavedPosts = [...savedPosts, postToSave];
-        await updateDoc(userDocRef, { savedPosts: updatedSavedPosts });
-        console.log('Card - Post saved successfully:', postToSave);
+      const savedPostDocRef = doc(db, 'posts', 'usersavedpost', user.uid, item.id);
+      if (isSaved) {
+        await setDoc(savedPostDocRef, {}, { merge: false });
+        setIsSaved(false);
+        console.log('Card - Post unsaved successfully');
       } else {
-        console.error('Card - User document not found for userId:', user.uid);
+        const postToSave = {
+          postId: item.id,
+          originalUserId: userId,
+          aiGeneratedUrl: item.aiGeneratedUrl,
+          caption: item.caption,
+          modelUsed: item.modelUsed,
+          username: item.username,
+          createdAt: item.createdAt,
+        };
+        await setDoc(savedPostDocRef, postToSave);
+        setIsSaved(true);
+        console.log('Card - Post saved successfully:', postToSave);
       }
     } catch (err) {
       console.error('Card - Error saving post:', err);
@@ -156,7 +155,7 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
   const ratio = aspectRatios[aspectRatio] || aspectRatios["1:1"];
   const height = baseWidth / ratio;
 
-  if (!post || !post.aiGeneratedUrl) {
+  if (!item || !item.aiGeneratedUrl) {
     return (
       <div style={{
         width: `${baseWidth}px`,
@@ -180,7 +179,7 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
         position: 'relative',
         width: `${baseWidth}px`,
         height: `${height}px`,
-        borderRadius: '0px',
+        borderRadius: '8px',
         overflow: 'hidden',
         boxShadow: '0 0 10px rgba(255, 255, 255, 0.1)',
         cursor: 'pointer',
@@ -239,12 +238,12 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
             setMediaError(true);
           }}
         >
-          <source src={post.aiGeneratedUrl} type={`video/${post.aiGeneratedUrl.split('.').pop().split('?')[0]}`} />
+          <source src={item.aiGeneratedUrl} type={`video/${item.aiGeneratedUrl.split('.').pop().split('?')[0]}`} />
           Your browser does not support the video tag.
         </video>
       ) : (
         <img
-          src={post.aiGeneratedUrl}
+          src={item.aiGeneratedUrl}
           alt="Post"
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
           onError={(e) => {
@@ -304,7 +303,7 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
               height: '0px',
               fontWeight: '600' 
             }}>
-              {post.modelUsed || 'Unknown'}
+              {item.modelUsed || 'Unknown'}
             </p>
             <div style={{
               display: 'flex',
@@ -316,7 +315,7 @@ const Card = ({ post, userId, aspectRatio = "1:1" }) => {
                 fontSize: '12px',
                 height: '5px'
               }}>
-                @{post.username || 'user'}
+                @{item.username || 'user'}
               </p>
               <motion.button
                 onClick={handleLike}

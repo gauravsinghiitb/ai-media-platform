@@ -1,11 +1,14 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { motion } from 'framer-motion';
-import { doc, getDoc, updateDoc } from 'firebase/firestore';
-import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { db, auth, storage } from '../firebase/firebase';
+import { doc, getDoc, updateDoc, collection, getDocs, query, where, writeBatch, getDocs as getDocsFirestore } from 'firebase/firestore';
+import { db, auth } from '../firebase/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import Card from '../components/Card';
+import ContributionCard from '../components/ContributionCard';
+import ContributionDetail from '../components/ContributionDetail';
+import ProfileHeader from '../components/ProfileHeader';
+import { FaLink, FaTh, FaLightbulb, FaBookmark } from 'react-icons/fa';
 
 const Profile = () => {
   const { userId } = useParams();
@@ -13,40 +16,130 @@ const Profile = () => {
   const [userData, setUserData] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState('myPosts');
-  const [isEditModalOpen, setIsEditModalOpen] = useState(false);
-  const [editForm, setEditForm] = useState({ username: '', bio: '' });
-  const [profilePicFile, setProfilePicFile] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [showFollowersModal, setShowFollowersModal] = useState(false);
   const [showFollowingModal, setShowFollowingModal] = useState(false);
   const [followersList, setFollowersList] = useState([]);
   const [followingList, setFollowingList] = useState([]);
+  const [followerSearch, setFollowerSearch] = useState('');
+  const [followingSearch, setFollowingSearch] = useState('');
+  const [isFollowing, setIsFollowing] = useState(false);
+  const [contributions, setContributions] = useState([]);
+  const [contributionCount, setContributionCount] = useState(0);
+  const [postsMap, setPostsMap] = useState({});
+  const [selectedContribution, setSelectedContribution] = useState(null);
+  const [showLinksPopup, setShowLinksPopup] = useState(false);
+  const bioRef = useRef(null);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
       setCurrentUser(user);
+      if (user && userData) {
+        setIsFollowing(userData.followers.includes(user.uid));
+      }
     });
 
     const fetchUserData = async () => {
       try {
         const userDocRef = doc(db, 'users', userId);
         const userDoc = await getDoc(userDocRef);
-        if (userDoc.exists()) {
-          const data = userDoc.data();
-          console.log('Profile - Fetched user data:', data);
-          console.log('Profile - Fetched profilePic:', data.profilePic);
-          setUserData({
-            ...data,
-            followers: data.followers || [],
-            following: data.following || [],
-          });
-          setEditForm({
-            username: data.username || '',
-            bio: data.bio || '',
-          });
-        } else {
-          setError('User not found');
+        if (!userDoc.exists()) {
+          throw new Error('User not found');
+        }
+
+        const data = userDoc.data();
+        const initialUserData = {
+          ...data,
+          followers: data.followers || [],
+          following: data.following || [],
+          posts: [],
+          savedPosts: [],
+          contributionCount: 0,
+          location: data.location || '',
+          socialMedia: data.socialMedia || { twitter: '', linkedin: '', instagram: '', github: '', facebook: '' },
+          joinedDate: data.joinedDate || '',
+          uid: userId,
+        };
+
+        let userPosts = [];
+        try {
+          const postsQuery = query(collection(db, 'posts'), where('userId', '==', userId));
+          const postsSnapshot = await getDocs(postsQuery);
+          userPosts = postsSnapshot.docs.map(doc => ({ id: doc.id, ...doc.data() }));
+        } catch (postsError) {
+          console.error('Profile - Error fetching user posts:', postsError);
+          setError('Failed to load user posts. Please try again later.');
+        }
+
+        const postsMapData = {};
+        userPosts.forEach(post => {
+          postsMapData[post.id] = post;
+        });
+
+        let savedPosts = [];
+        if (currentUser && currentUser.uid === userId) {
+          const savedPostsCollection = collection(db, 'posts', 'usersavedpost', userId);
+          const savedPostsSnapshot = await getDocs(savedPostsCollection);
+          savedPosts = savedPostsSnapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            userId: doc.data().originalUserId || userId,
+          }));
+        }
+
+        let allContributions = [];
+        let totalContributionCount = 0;
+        try {
+          const postIds = userPosts.map(post => post.id);
+          if (postIds.length > 0) {
+            for (const postId of postIds.slice(0, 10)) {
+              const contributionsRef = collection(db, 'contributions', userId, postId);
+              const contributionsSnapshot = await getDocs(contributionsRef);
+              contributionsSnapshot.forEach(doc => {
+                const contributionData = doc.data();
+                if (Array.isArray(contributionData.nodes)) {
+                  const userContributions = contributionData.nodes
+                    .filter(node => node.userId === userId)
+                    .map(node => {
+                      const parentNode = node.parentId
+                        ? contributionData.nodes.find(n => n.id === node.parentId) || null
+                        : null;
+                      return {
+                        ...node,
+                        postId,
+                        username: data.username?.username,
+                        profilePic: data.profilePic,
+                        comments: node.comments || [],
+                        likesCount: node.upvotesCount || 0,
+                        hasLiked: node.userUpvotes?.includes(userId) || false,
+                        parentNode,
+                      };
+                    });
+                  allContributions = [...allContributions, ...userContributions];
+                  totalContributionCount += userContributions.length;
+                }
+              });
+            }
+          }
+        } catch (contribError) {
+          console.error('Profile - Error fetching contributions:', contribError);
+          setError('Failed to load contributions');
+        }
+
+        setUserData({
+          ...initialUserData,
+          posts: userPosts,
+          postsCount: userPosts.length,
+          savedPosts,
+          contributionCount: totalContributionCount,
+        });
+        setContributions(allContributions);
+        setContributionCount(totalContributionCount);
+        setPostsMap(postsMapData);
+
+        if (currentUser) {
+          setIsFollowing(initialUserData.followers.includes(currentUser.uid));
         }
       } catch (err) {
         console.error('Profile - Error fetching user data:', err);
@@ -58,7 +151,7 @@ const Profile = () => {
 
     fetchUserData();
     return () => unsubscribe();
-  }, [userId]);
+  }, [userId, currentUser]);
 
   const fetchFollowersList = async () => {
     if (!userData.followers || userData.followers.length === 0) {
@@ -71,7 +164,15 @@ const Profile = () => {
         userData.followers.map(async (followerId) => {
           const followerDocRef = doc(db, 'users', followerId);
           const followerDoc = await getDoc(followerDocRef);
-          return followerDoc.exists() ? followerDoc.data().username || 'Unknown' : 'Unknown';
+          if (followerDoc.exists()) {
+            const data = followerDoc.data();
+            return {
+              id: followerId,
+              username: data.username?.username || 'Unknown',
+              profilePic: data.profilePic || 'https://dummyimage.com/40x40/000/fff?text=User',
+            };
+          }
+          return { id: followerId, username: 'Unknown', profilePic: 'https://dummyimage.com/40x40/000/fff?text=User' };
         })
       );
       setFollowersList(followersData);
@@ -92,7 +193,15 @@ const Profile = () => {
         userData.following.map(async (followingId) => {
           const followingDocRef = doc(db, 'users', followingId);
           const followingDoc = await getDoc(followingDocRef);
-          return followingDoc.exists() ? followingDoc.data().username || 'Unknown' : 'Unknown';
+          if (followingDoc.exists()) {
+            const data = followingDoc.data();
+            return {
+              id: followingId,
+              username: data.username?.username || 'Unknown',
+              profilePic: data.profilePic || 'https://dummyimage.com/40x40/000/fff?text=User',
+            };
+          }
+          return { id: followingId, username: 'Unknown', profilePic: 'https://dummyimage.com/40x40/000/fff?text=User' };
         })
       );
       setFollowingList(followingData);
@@ -105,73 +214,207 @@ const Profile = () => {
   const handleShowFollowers = async () => {
     await fetchFollowersList();
     setShowFollowersModal(true);
+    setFollowerSearch('');
   };
 
   const handleShowFollowing = async () => {
     await fetchFollowingList();
     setShowFollowingModal(true);
+    setFollowingSearch('');
   };
 
-  const handleFileChange = (e) => {
-    const file = e.target.files[0];
-    if (file) {
-      if (!file.type.startsWith('image/')) {
-        setError('Please select an image file');
-        return;
-      }
-      if (file.size > 5 * 1024 * 1024) {
-        setError('File size must be less than 5MB');
-        return;
-      }
-      setProfilePicFile(file);
-      setError(null);
-    }
-  };
-
-  const handleEditProfile = async (e) => {
-    e.preventDefault();
-    if (!currentUser || currentUser.uid !== userId) {
-      setError('You can only edit your own profile');
-      return;
-    }
+  const handleFollow = async () => {
+    if (!currentUser || currentUser.uid === userId) return;
 
     try {
-      let profilePicUrl = userData.profilePic || '';
-      if (profilePicFile) {
-        const storageRef = ref(storage, `profilePictures/${userId}/${profilePicFile.name}`);
-        await uploadBytes(storageRef, profilePicFile);
-        profilePicUrl = await getDownloadURL(storageRef);
-        console.log('Profile - Uploaded profile picture URL:', profilePicUrl);
+      const userDocRef = doc(db, 'users', userId);
+      const currentUserDocRef = doc(db, 'users', currentUser.uid);
+
+      const batch = writeBatch(db);
+
+      if (isFollowing) {
+        batch.update(userDocRef, {
+          followers: userData.followers.filter(id => id !== currentUser.uid),
+        });
+        const currentUserDoc = await getDoc(currentUserDocRef);
+        const currentUserData = currentUserDoc.data();
+        batch.update(currentUserDocRef, {
+          following: (currentUserData.following || []).filter(id => id !== userId),
+        });
+        setUserData(prev => ({
+          ...prev,
+          followers: prev.followers.filter(id => id !== currentUser.uid),
+        }));
+        setIsFollowing(false);
+      } else {
+        batch.update(userDocRef, {
+          followers: [...userData.followers, currentUser.uid],
+        });
+        const currentUserDoc = await getDoc(currentUserDocRef);
+        const currentUserData = currentUserDoc.data();
+        batch.update(currentUserDocRef, {
+          following: [...(currentUserData.following || []), userId],
+        });
+        setUserData(prev => ({
+          ...prev,
+          followers: [...prev.followers, currentUser.uid],
+        }));
+        setIsFollowing(true);
       }
 
-      const userDocRef = doc(db, 'users', userId);
-      await updateDoc(userDocRef, {
-        username: editForm.username,
-        bio: editForm.bio,
-        profilePic: profilePicUrl,
-      });
-
-      setUserData((prev) => ({
-        ...prev,
-        username: editForm.username,
-        bio: editForm.bio,
-        profilePic: profilePicUrl,
-      }));
-      setProfilePicFile(null);
-      setIsEditModalOpen(false);
+      await batch.commit();
     } catch (err) {
-      console.error('Profile - Error updating profile:', err);
-      setError('Failed to update profile');
+      console.error('Profile - Error updating follow status:', err);
+      setError('Failed to update follow status: ' + err.message);
     }
   };
 
-  const handleInputChange = (e) => {
-    const { name, value } = e.target;
-    setEditForm((prev) => ({ ...prev, [name]: value }));
+  const handleCardClick = (item) => {
+    if (view === 'myPosts') {
+      navigate(`/post/${userId}/${item.id}`);
+    } else if (view === 'contributions') {
+      setSelectedContribution(item);
+    } else if (view === 'savedPosts') {
+      navigate(`/post/${item.userId}/${item.postId}`);
+    }
   };
 
-  const handleContribute = (postId) => {
-    navigate(`/contribute/${postId}/1`);
+  const renderBio = (bio) => {
+    if (!bio) return 'No bio available';
+
+    const urlRegex = /(https?:\/\/[^\s]+)/g;
+    const mentionRegex = /@[a-zA-Z0-9_]+/g;
+
+    const urls = bio.match(urlRegex) || [];
+    let bioWithoutUrls = bio.replace(urlRegex, '').trim();
+    const parts = bioWithoutUrls.split(mentionRegex);
+    const mentions = bioWithoutUrls.match(mentionRegex) || [];
+    const finalParts = [];
+
+    let mentionIndex = 0;
+    parts.forEach((part, index) => {
+      finalParts.push(<span key={`part-${index}`}>{part}</span>);
+      if (mentionIndex < mentions.length) {
+        const mention = mentions[mentionIndex];
+        const username = mention.substring(1);
+        finalParts.push(
+          <span
+            key={`mention-${index}`}
+            style={{ color: '#1DA1F2', textDecoration: 'none', cursor: 'pointer' }}
+            onClick={async (e) => {
+              e.preventDefault();
+              try {
+                const usernameDocRef = doc(db, 'usernames', username);
+                const usernameDoc = await getDoc(usernameDocRef);
+                if (usernameDoc.exists()) {
+                  const userId = usernameDoc.data().uid;
+                  navigate(`/profile/${userId}`);
+                } else {
+                  console.error('User not found for username:', username);
+                }
+              } catch (err) {
+                console.error('Error navigating to user profile:', err);
+              }
+            }}
+          >
+            {mention}
+          </span>
+        );
+        mentionIndex++;
+      }
+    });
+
+    const bioContent = finalParts.length > 1 || finalParts[0].props.children !== 'No bio available' ? finalParts : 'No bio available';
+
+    return (
+      <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+        <span>{bioContent}</span>
+        {urls.length > 0 && (
+          <div style={{ display: 'flex', alignItems: 'center', gap: '5px' }}>
+            <FaLink
+              size={14}
+              style={{ color: '#1DA1F2', cursor: 'pointer' }}
+              onClick={() => setShowLinksPopup(true)}
+            />
+            <span style={{ fontSize: '12px', color: '#1DA1F2' }}>
+              {urls.length === 1 ? (
+                urls[0].length > 30 ? `${urls[0].substring(0, 27)}...` : urls[0]
+              ) : (
+                <span
+                  style={{ cursor: 'pointer', textDecoration: 'underline' }}
+                  onClick={() => setShowLinksPopup(true)}
+                >
+                  {urls.length - 1} more
+                </span>
+              )}
+            </span>
+          </div>
+        )}
+        {showLinksPopup && urls.length > 0 && (
+          <motion.div
+            style={{
+              position: 'fixed',
+              top: '50%',
+              left: '50%',
+              transform: 'translate(-50%, -50%)',
+              backgroundColor: '#1C1C1C',
+              padding: '20px',
+              borderRadius: '10px',
+              border: '1px solid #FFFFFF',
+              zIndex: 1001,
+              maxHeight: '50vh',
+              overflowY: 'auto',
+              width: '300px',
+              maxWidth: '90%',
+            }}
+            initial={{ opacity: 0, scale: 0.9 }}
+            animate={{ opacity: 1, scale: 1 }}
+            exit={{ opacity: 0, scale: 0.9 }}
+          >
+            <h4 style={{ fontSize: '16px', fontWeight: '500', marginBottom: '15px', textAlign: 'center' }}>
+              Links
+            </h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+              {urls.map((url, index) => (
+                <a
+                  key={`url-${index}`}
+                  href={url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    color: '#1DA1F2',
+                    textDecoration: 'underline',
+                    fontSize: '14px',
+                    wordBreak: 'break-all',
+                  }}
+                >
+                  {url}
+                </a>
+              ))}
+            </div>
+            <motion.button
+              onClick={() => setShowLinksPopup(false)}
+              style={{
+                display: 'block',
+                margin: '15px auto 0',
+                padding: '6px 12px',
+                borderRadius: '5px',
+                border: '1px solid #FFFFFF',
+                backgroundColor: '#FFFFFF',
+                color: '#000000',
+                cursor: 'pointer',
+                fontSize: '12px',
+                fontWeight: '500',
+              }}
+              whileHover={{ backgroundColor: '#e0e0e0', scale: 1.05 }}
+              whileTap={{ scale: 0.95 }}
+            >
+              Close
+            </motion.button>
+          </motion.div>
+        )}
+      </div>
+    );
   };
 
   if (loading) {
@@ -198,82 +441,36 @@ const Profile = () => {
     );
   }
 
-  const postsToDisplay = view === 'myPosts' ? userData.posts || [] : userData.savedPosts || [];
+  const isOwnProfile = currentUser && currentUser.uid === userId;
+  const itemsToDisplay = view === 'myPosts' ? userData.posts : view === 'contributions' ? contributions : userData.savedPosts;
+  const filteredFollowers = followersList.filter(user =>
+    user.username.toLowerCase().includes(followerSearch.toLowerCase())
+  );
+  const filteredFollowing = followingList.filter(user =>
+    user.username.toLowerCase().includes(followingSearch.toLowerCase())
+  );
 
   return (
     <div style={{ backgroundColor: '#000000', minHeight: '100vh', color: '#FFFFFF', padding: '30px 15px' }}>
-      {/* Profile Header (Centered) */}
-      <div style={{
-        display: 'flex',
-        flexDirection: 'column',
-        alignItems: 'center',
-        gap: '20px',
-        marginBottom: '30px',
-        padding: '20px 0',
-        borderBottom: '1px solid #FFFFFF',
-        textAlign: 'center',
-      }}>
-        <motion.img
-          src={userData.profilePic || 'https://via.placeholder.com/100?text=Profile'}
-          alt="Profile"
-          style={{
-            width: '100px',
-            height: '100px',
-            borderRadius: '50%',
-            objectFit: 'cover',
-            border: '2px solid #FFFFFF',
-          }}
-          onError={(e) => {
-            console.error('Profile - Failed to load profile picture:', userData.profilePic);
-            e.target.src = 'https://via.placeholder.com/100?text=Profile';
-          }}
-          whileHover={{ scale: 1.05 }}
-        />
-        <div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '10px', flexWrap: 'wrap', justifyContent: 'center' }}>
-            <h2 style={{ fontSize: '24px', fontWeight: '600' }}>{userData.username || 'User'}</h2>
-            {currentUser && currentUser.uid === userId && (
-              <motion.button
-                onClick={() => setIsEditModalOpen(true)}
-                style={{
-                  backgroundColor: '#FFFFFF',
-                  color: '#000000',
-                  padding: '6px 12px',
-                  borderRadius: '5px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '13px',
-                  fontWeight: '500',
-                }}
-                whileHover={{ backgroundColor: '#e0e0e0', scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                Edit Profile
-              </motion.button>
-            )}
-          </div>
-          <div style={{ display: 'flex', gap: '20px', marginBottom: '10px', justifyContent: 'center' }}>
-            <p style={{ fontSize: '14px' }}><strong>{(userData.posts || []).length}</strong> Posts</p>
-            <p
-              style={{ fontSize: '14px', cursor: 'pointer' }}
-              onClick={handleShowFollowers}
-            >
-              <strong>{userData.followers.length}</strong> Followers
-            </p>
-            <p
-              style={{ fontSize: '14px', cursor: 'pointer' }}
-              onClick={handleShowFollowing}
-            >
-              <strong>{userData.following.length}</strong> Following
-            </p>
-          </div>
-          <p style={{ fontSize: '14px', fontWeight: '300' }}>{userData.bio || 'No bio available'}</p>
-        </div>
-      </div>
+      <ProfileHeader
+        userData={{ ...userData, contributionCount }}
+        currentUser={currentUser}
+        isOwnProfile={isOwnProfile}
+        isFollowing={isFollowing}
+        handleFollow={handleFollow}
+        setShowFollowersModal={handleShowFollowers}
+        setShowFollowingModal={handleShowFollowing}
+        renderBio={renderBio}
+      />
 
-      {/* Slider for My Posts and Saved Posts */}
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
-        <div style={{ display: 'flex', borderBottom: '1px solid #FFFFFF', width: '200px', position: 'relative' }}>
+        <div style={{
+          display: 'flex',
+          borderBottom: '1px solid #FFFFFF',
+          width: isOwnProfile ? '300px' : '200px',
+          position: 'relative',
+          gap: '15px',
+        }}>
           <motion.button
             onClick={() => setView('myPosts')}
             style={{
@@ -285,18 +482,23 @@ const Profile = () => {
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: '500',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px',
             }}
             whileHover={{ color: '#e0e0e0' }}
             whileTap={{ scale: 0.95 }}
           >
-            My Posts
+            <FaTh size={14} />
+            Posts
             {view === 'myPosts' && (
               <motion.div
                 style={{
                   position: 'absolute',
                   bottom: '-1px',
-                  left: '0',
-                  width: '50%',
+                  left: isOwnProfile ? '0' : '0',
+                  width: isOwnProfile ? '33.33%' : '50%',
                   height: '2px',
                   backgroundColor: '#FFFFFF',
                 }}
@@ -305,7 +507,7 @@ const Profile = () => {
             )}
           </motion.button>
           <motion.button
-            onClick={() => setView('savedPosts')}
+            onClick={() => setView('contributions')}
             style={{
               flex: 1,
               padding: '8px 0',
@@ -315,18 +517,23 @@ const Profile = () => {
               cursor: 'pointer',
               fontSize: '14px',
               fontWeight: '500',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              gap: '5px',
             }}
             whileHover={{ color: '#e0e0e0' }}
             whileTap={{ scale: 0.95 }}
           >
-            Saved Posts
-            {view === 'savedPosts' && (
+            <FaLightbulb size={14} />
+            Contributions
+            {view === 'contributions' && (
               <motion.div
                 style={{
                   position: 'absolute',
                   bottom: '-1px',
-                  right: '0',
-                  width: '50%',
+                  left: isOwnProfile ? '33.33%' : '50%',
+                  width: isOwnProfile ? '33.33%' : '50%',
                   height: '2px',
                   backgroundColor: '#FFFFFF',
                 }}
@@ -334,49 +541,138 @@ const Profile = () => {
               />
             )}
           </motion.button>
+          {isOwnProfile && (
+            <motion.button
+              onClick={() => setView('savedPosts')}
+              style={{
+                flex: 1,
+                padding: '8px 0',
+                backgroundColor: 'transparent',
+                color: '#FFFFFF',
+                border: 'none',
+                cursor: 'pointer',
+                fontSize: '14px',
+                fontWeight: '500',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                gap: '5px',
+              }}
+              whileHover={{ color: '#e0e0e0' }}
+              whileTap={{ scale: 0.95 }}
+            >
+              <FaBookmark size={14} />
+              Saved
+              {view === 'savedPosts' && (
+                <motion.div
+                  style={{
+                    position: 'absolute',
+                    bottom: '-1px',
+                    right: '0',
+                    width: '33.33%',
+                    height: '2px',
+                    backgroundColor: '#FFFFFF',
+                  }}
+                  layoutId="underline"
+                />
+              )}
+            </motion.button>
+          )}
         </div>
       </div>
 
-      {/* Posts Grid with Contribute Button */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(3, 1fr)', gap: '0px' }}>
-        {postsToDisplay.length > 0 ? (
-          postsToDisplay.map((post, index) => (
-            <div key={index} style={{ position: 'relative' }}>
-              <Card
-                post={post}
-                userId={view === 'myPosts' ? userId : post.originalUserId || userId}
-                aspectRatio="1:1"
-              />
-              <motion.button
-                onClick={() => handleContribute(post.id)}
+      <div style={{
+        columnCount: 3,
+        columnGap: '10px',
+        maxWidth: '1400px',
+        margin: '0 auto',
+        padding: '0 10px',
+      }}>
+        {itemsToDisplay.length > 0 ? (
+          itemsToDisplay.map((item, index) => {
+            if (view === 'contributions') {
+              console.log(`Contribution ${index}:`, {
+                item,
+                postId: item.postId,
+                postMedia: postsMap[item.postId]?.aiGeneratedUrl,
+              });
+            } else {
+              console.log(`Post ${index} (${view}):`, {
+                item,
+                aiGeneratedUrl: item.aiGeneratedUrl,
+              });
+            }
+
+            return (
+              <div
+                key={`${view}-${item.id}-${index}`}
                 style={{
-                  position: 'absolute',
-                  bottom: '10px',
-                  right: '10px',
-                  backgroundColor: '#007bff',
-                  color: '#FFFFFF',
-                  padding: '5px 10px',
-                  borderRadius: '5px',
-                  border: 'none',
-                  cursor: 'pointer',
-                  fontSize: '12px',
-                  fontWeight: '500',
+                  breakInside: 'avoid',
+                  marginBottom: '10px',
                 }}
-                whileHover={{ backgroundColor: '#0056b3', scale: 1.05 }}
-                whileTap={{ scale: 0.95 }}
               >
-                Contribute
-              </motion.button>
-            </div>
-          ))
+                {view === 'contributions' ? (
+                  postsMap[item.postId] ? (
+                    <ContributionCard
+                      contribution={item}
+                      postMedia={postsMap[item.postId]?.aiGeneratedUrl || 'https://dummyimage.com/400x400/000/fff?text=Media+Unavailable'}
+                      userId={userId}
+                      postId={item.postId}
+                      onClick={() => handleCardClick(item)}
+                      style={{ height: 'auto' }}
+                    />
+                  ) : (
+                    <div
+                      style={{
+                        position: 'relative',
+                        backgroundColor: '#1C1C1C',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        color: '#AAAAAA',
+                        fontSize: '12px',
+                        textAlign: 'center',
+                        height: '200px',
+                      }}
+                    >
+                      <span style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)' }}>
+                        Post Unavailable
+                      </span>
+                    </div>
+                  )
+                ) : (
+                  <Card
+                    post={item}
+                    userId={
+                      view === 'myPosts'
+                        ? userId
+                        : view === 'contributions'
+                        ? item.userId
+                        : item.originalUserId || userId
+                    }
+                    onClick={() => handleCardClick(item)}
+                    style={{ height: 'auto' }}
+                  />
+                )}
+              </div>
+            );
+          })
         ) : (
-          <div style={{ gridColumn: '1 / -1', textAlign: 'center', fontSize: '16px', padding: '20px' }}>
-            {view === 'myPosts' ? 'No posts yet' : 'No saved posts'}
+          <div style={{ textAlign: 'center', fontSize: '16px', padding: '20px' }}>
+            {view === 'myPosts' ? 'No posts yet' : view === 'contributions' ? 'No contributions yet' : 'No saved posts'}
           </div>
         )}
       </div>
 
-      {/* Followers Modal */}
+      {selectedContribution && (
+        <ContributionDetail
+          contribution={selectedContribution}
+          post={postsMap[selectedContribution.postId]}
+          onClose={() => setSelectedContribution(null)}
+          userId={userId}
+        />
+      )}
+
       {showFollowersModal && (
         <motion.div
           style={{
@@ -397,38 +693,79 @@ const Profile = () => {
         >
           <motion.div
             style={{
-              backgroundColor: '#000000',
+              backgroundColor: '#1C1C1C',
               padding: '25px',
               borderRadius: '10px',
               width: '300px',
               maxWidth: '90%',
-              color: '#FFFFFF',
+              color: 'white',
               border: '1px solid #FFFFFF',
               maxHeight: '70vh',
               overflowY: 'auto',
+              boxShadow: '0 0 15px #FFFFFF',
             }}
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.9 }}
           >
             <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px', textAlign: 'center' }}>Followers</h3>
-            {followersList.length > 0 ? (
+            <input
+              type="text"
+              placeholder="Search followers..."
+              value={followerSearch}
+              onChange={(e) => setFollowerSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '15px',
+                borderRadius: '5px',
+                border: '1px solid #FFFFFF',
+                backgroundColor: '#333333',
+                color: '#FFFFFF',
+                fontSize: '14px',
+              }}
+            />
+            {filteredFollowers.length > 0 ? (
               <ul style={{ listStyle: 'none', padding: 0 }}>
-                {followersList.map((username, index) => (
+                {filteredFollowers.map((user) => (
                   <li
-                    key={index}
+                    key={user.id}
                     style={{
+                      display: 'flex',
+                      alignItems: 'center',
                       padding: '10px 0',
-                      borderBottom: index < followersList.length - 1 ? '1px solid #FFFFFF' : 'none',
+                      borderBottom: '1px solid #FFFFFF',
                       fontSize: '16px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      navigate(`/profile/${user.id}`);
+                      setShowFollowersModal(false);
                     }}
                   >
-                    {username}
+                    <img
+                      src={user.profilePic}
+                      alt={user.username}
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        marginRight: '10px',
+                        objectFit: 'cover',
+                        border: '1px solid #FFFFFF',
+                      }}
+                      onError={(e) => {
+                        e.target.src = 'https://dummyimage.com/40x40/000/fff?text=User';
+                      }}
+                    />
+                    <span>{user.username}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p style={{ textAlign: 'center', fontSize: '16px' }}>No followers yet</p>
+              <p style={{ textAlign: 'center', fontSize: '16px' }}>
+                {followerSearch ? 'No matching followers' : 'No followers yet'}
+              </p>
             )}
             <motion.button
               onClick={() => setShowFollowersModal(false)}
@@ -438,13 +775,14 @@ const Profile = () => {
                 padding: '8px 16px',
                 borderRadius: '5px',
                 border: '1px solid #FFFFFF',
-                backgroundColor: '#000000',
-                color: '#FFFFFF',
+                backgroundColor: '#FFFFFF',
+                color: '#000000',
                 cursor: 'pointer',
                 fontSize: '14px',
                 fontWeight: '500',
+                boxShadow: '0 0 5px #FFFFFF',
               }}
-              whileHover={{ backgroundColor: '#1a1a1a', scale: 1.05 }}
+              whileHover={{ backgroundColor: '#e0e0e0', scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               Close
@@ -453,15 +791,14 @@ const Profile = () => {
         </motion.div>
       )}
 
-      {/* Following Modal */}
       {showFollowingModal && (
         <motion.div
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
-            right: 0,
-            bottom: 0,
+            right: '0',
+            bottom: '0',
             backgroundColor: 'rgba(0, 0, 0, 0.8)',
             display: 'flex',
             justifyContent: 'center',
@@ -474,7 +811,7 @@ const Profile = () => {
         >
           <motion.div
             style={{
-              backgroundColor: '#000000',
+              backgroundColor: '#1C1C1C',
               padding: '25px',
               borderRadius: '10px',
               width: '300px',
@@ -483,29 +820,70 @@ const Profile = () => {
               border: '1px solid #FFFFFF',
               maxHeight: '70vh',
               overflowY: 'auto',
+              boxShadow: '0 0 15px #FFFFFF',
             }}
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.9 }}
           >
             <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px', textAlign: 'center' }}>Following</h3>
-            {followingList.length > 0 ? (
+            <input
+              type="text"
+              placeholder="Search following..."
+              value={followingSearch}
+              onChange={(e) => setFollowingSearch(e.target.value)}
+              style={{
+                width: '100%',
+                padding: '8px',
+                marginBottom: '15px',
+                borderRadius: '5px',
+                border: '1px solid #FFFFFF',
+                backgroundColor: '#333333',
+                color: '#FFFFFF',
+                fontSize: '14px',
+              }}
+            />
+            {filteredFollowing.length > 0 ? (
               <ul style={{ listStyle: 'none', padding: 0 }}>
-                {followingList.map((username, index) => (
+                {filteredFollowing.map((user) => (
                   <li
-                    key={index}
+                    key={user.id}
                     style={{
+                      display: 'flex',
+                      alignItems: 'center',
                       padding: '10px 0',
-                      borderBottom: index < followingList.length - 1 ? '1px solid #FFFFFF' : 'none',
+                      borderBottom: '1px solid #FFFFFF',
                       fontSize: '16px',
+                      cursor: 'pointer',
+                    }}
+                    onClick={() => {
+                      navigate(`/profile/${user.id}`);
+                      setShowFollowingModal(false);
                     }}
                   >
-                    {username}
+                    <img
+                      src={user.profilePic}
+                      alt={user.username}
+                      style={{
+                        width: '40px',
+                        height: '40px',
+                        borderRadius: '50%',
+                        marginRight: '10px',
+                        objectFit: 'cover',
+                        border: '1px solid #FFFFFF',
+                      }}
+                      onError={(e) => {
+                        e.target.src = 'https://dummyimage.com/40x40/000/fff?text=User';
+                      }}
+                    />
+                    <span>{user.username}</span>
                   </li>
                 ))}
               </ul>
             ) : (
-              <p style={{ textAlign: 'center', fontSize: '16px' }}>Not following anyone</p>
+              <p style={{ textAlign: 'center', fontSize: '16px' }}>
+                {followingSearch ? 'No matching users' : 'Not following anyone'}
+              </p>
             )}
             <motion.button
               onClick={() => setShowFollowingModal(false)}
@@ -515,13 +893,14 @@ const Profile = () => {
                 padding: '8px 16px',
                 borderRadius: '5px',
                 border: '1px solid #FFFFFF',
-                backgroundColor: '#000000',
-                color: '#FFFFFF',
+                backgroundColor: '#FFFFFF',
+                color: '#000000',
                 cursor: 'pointer',
                 fontSize: '14px',
                 fontWeight: '500',
+                boxShadow: '0 0 5px #FFFFFF',
               }}
-              whileHover={{ backgroundColor: '#1a1a1a', scale: 1.05 }}
+              whileHover={{ backgroundColor: '#e0e0e0', scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               Close
@@ -530,141 +909,19 @@ const Profile = () => {
         </motion.div>
       )}
 
-      {/* Edit Profile Modal */}
-      {isEditModalOpen && (
-        <motion.div
+      {showLinksPopup && (
+        <div
           style={{
             position: 'fixed',
             top: 0,
             left: 0,
             right: 0,
             bottom: 0,
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
+            backgroundColor: 'rgba(0, 0, 0, 0.5)',
             zIndex: 1000,
           }}
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-        >
-          <motion.div
-            style={{
-              backgroundColor: '#000000',
-              padding: '25px',
-              borderRadius: '10px',
-              width: '400px',
-              maxWidth: '90%',
-              color: '#FFFFFF',
-              border: '1px solid #FFFFFF',
-            }}
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0.9 }}
-          >
-            <h3 style={{ fontSize: '20px', fontWeight: '600', marginBottom: '20px', textAlign: 'center' }}>Edit Profile</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '15px' }}>
-              <div>
-                <label style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '5px' }}>Username</label>
-                <input
-                  type="text"
-                  name="username"
-                  value={editForm.username}
-                  onChange={handleInputChange}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '5px',
-                    border: '1px solid #FFFFFF',
-                    backgroundColor: '#000000',
-                    color: '#FFFFFF',
-                    fontSize: '14px',
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '5px' }}>Bio</label>
-                <textarea
-                  name="bio"
-                  value={editForm.bio}
-                  onChange={handleInputChange}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '5px',
-                    border: '1px solid #FFFFFF',
-                    backgroundColor: '#000000',
-                    color: '#FFFFFF',
-                    resize: 'vertical',
-                    minHeight: '80px',
-                    fontSize: '14px',
-                  }}
-                />
-              </div>
-              <div>
-                <label style={{ fontSize: '14px', fontWeight: '500', display: 'block', marginBottom: '5px' }}>Profile Picture</label>
-                <input
-                  type="file"
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  style={{
-                    width: '100%',
-                    padding: '8px',
-                    borderRadius: '5px',
-                    border: '1px solid #FFFFFF',
-                    backgroundColor: '#000000',
-                    color: '#FFFFFF',
-                    fontSize: '14px',
-                  }}
-                />
-                {profilePicFile && (
-                  <p style={{ fontSize: '12px', marginTop: '5px' }}>
-                    Selected: {profilePicFile.name}
-                  </p>
-                )}
-              </div>
-              <div style={{ display: 'flex', gap: '10px', marginTop: '20px' }}>
-                <motion.button
-                  onClick={handleEditProfile}
-                  style={{
-                    flex: 1,
-                    padding: '8px',
-                    borderRadius: '5px',
-                    border: 'none',
-                    backgroundColor: '#FFFFFF',
-                    color: '#000000',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                  }}
-                  whileHover={{ backgroundColor: '#e0e0e0', scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  Save
-                </motion.button>
-                <motion.button
-                  onClick={() => setIsEditModalOpen(false)}
-                  style={{
-                    flex: 1,
-                    padding: '8px',
-                    borderRadius: '5px',
-                    border: '1px solid #FFFFFF',
-                    backgroundColor: '#000000',
-                    color: '#FFFFFF',
-                    cursor: 'pointer',
-                    fontSize: '14px',
-                    fontWeight: '500',
-                  }}
-                  whileHover={{ backgroundColor: '#1a1a1a', scale: 1.05 }}
-                  whileTap={{ scale: 0.95 }}
-                >
-                  Cancel
-                </motion.button>
-              </div>
-            </div>
-          </motion.div>
-        </motion.div>
+          onClick={() => setShowLinksPopup(false)}
+        />
       )}
     </div>
   );

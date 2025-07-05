@@ -1,223 +1,162 @@
-import { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { auth, db } from '../firebase/firebase';
-import { doc, getDoc, setDoc, updateDoc } from 'firebase/firestore';
-import { motion } from 'framer-motion';
+import { auth, googleProvider, db } from '../firebase/firebase';
+import { signInWithPopup } from 'firebase/auth';
+import { doc, getDoc, setDoc } from 'firebase/firestore';
+import LoadingSpinner from '../components/LoadingSpinner';
 
-function SetUsername() {
+const Signup = () => {
   const navigate = useNavigate();
-  const [username, setUsername] = useState('');
-  const [error, setError] = useState('');
+  const [error, setError] = useState(null);
   const [loading, setLoading] = useState(false);
 
-  useEffect(() => {
-    const checkUsername = async () => {
-      if (!auth.currentUser) {
-        console.log('No authenticated user found. Redirecting to /login.');
-        navigate('/login');
-        return;
-      }
-
-      console.log('Authenticated user:', auth.currentUser.uid);
-      const userDocRef = doc(db, 'users', auth.currentUser.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (userDoc.exists() && userDoc.data().username) {
-        console.log('Username already set:', userDoc.data().username);
-        navigate(`/profile/${auth.currentUser.uid}`);
-      }
-    };
-
-    checkUsername();
-  }, [navigate]);
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    setLoading(true);
-    setError('');
-
-    try {
-      if (!auth.currentUser) {
-        throw new Error('No authenticated user found. Please log in again.');
-      }
-
-      if (!username) {
-        throw new Error('Username is required.');
-      }
-
-      const usernameRegex = /^[a-zA-Z0-9_]{3,20}$/;
-      if (!usernameRegex.test(username)) {
-        throw new Error('Username must be 3-20 characters and contain only letters, numbers, or underscores.');
-      }
-
+  const generateUniqueUsername = async (baseUsername) => {
+    let username = baseUsername;
+    let counter = 0;
+    while (true) {
       const usernameDocRef = doc(db, 'usernames', username);
       const usernameDoc = await getDoc(usernameDocRef);
-      if (usernameDoc.exists()) {
-        throw new Error('Username is already taken.');
+      if (!usernameDoc.exists()) {
+        return username;
       }
+      counter++;
+      username = `${baseUsername}${counter}`;
+    }
+  };
 
-      const userDocRef = doc(db, 'users', auth.currentUser.uid);
-      const userDoc = await getDoc(userDocRef);
-      if (!userDoc.exists()) {
-        console.log(`User document does not exist for UID: ${auth.currentUser.uid}. Creating...`);
-        await setDoc(userDocRef, {
-          username: username,
-          name: '',
-          profilePic: '',
-          bio: '',
-          followers: [],
-          following: [],
-          posts: [],
-          createdAt: new Date().toISOString(),
-        });
-        console.log('Successfully created user document with username.');
-      } else {
-        console.log('Updating username in users collection for UID:', auth.currentUser.uid);
-        await updateDoc(userDocRef, { username });
-        console.log('Successfully updated username in users collection.');
-      }
+  const initializeUserDoc = async (user) => {
+    const userDocRef = doc(db, 'users', user.uid);
+    const userDoc = await getDoc(userDocRef);
 
-      console.log('Creating username document in usernames collection:', username);
-      await setDoc(usernameDocRef, { uid: auth.currentUser.uid });
-      console.log('Successfully created username document.');
+    if (!userDoc.exists()) {
+      let derivedUsername = user.displayName
+        ? user.displayName.toLowerCase().replace(/\s+/g, '')
+        : user.email.split('@')[0].toLowerCase().replace(/[^a-z0-9]/g, '');
+      derivedUsername = await generateUniqueUsername(derivedUsername);
 
-      navigate(`/profile/${auth.currentUser.uid}`);
+      const profilePic = user.photoURL || 'https://dummyimage.com/30x30/000/fff?text=User';
+      const name = user.displayName || user.email.split('@')[0];
+
+      await setDoc(userDocRef, {
+        bio: '', // Bio is empty by default
+        followers: [],
+        following: [],
+        name: name,
+        profilePic: profilePic,
+        username: {
+          username: derivedUsername,
+          uid: user.uid,
+        },
+        postsCount: 0,
+        savedPostsCount: 0,
+      });
+
+      // Register the username in the usernames collection
+      const usernameDocRef = doc(db, 'usernames', derivedUsername);
+      await setDoc(usernameDocRef, { uid: user.uid });
+    }
+  };
+
+  const handleGoogleSignup = async () => {
+    setLoading(true);
+    try {
+      const result = await signInWithPopup(auth, googleProvider);
+      const user = result.user;
+      await initializeUserDoc(user);
+      navigate(`/profile/${user.uid}`); // Navigate directly to profile
     } catch (err) {
-      console.error('Error setting username:', err);
-      setError(err.message || 'Failed to set username. Please try again.');
+      setError(err.message);
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <>
-      <style>
-        {`
-          .set-username-container {
-            background: linear-gradient(180deg, #0a0a23 0%, #1a1a40 100%);
-            color: #ffffff;
-            min-height: 100vh;
-            padding: 3rem 1rem;
-            display: flex;
-            justify-content: center;
-            align-items: center;
-          }
-
-          .set-username-form {
-            max-width: 400px;
-            width: 100%;
-            background: rgba(255, 255, 255, 0.05);
-            padding: 2rem;
-            border-radius: 1rem;
-            box-shadow: 0 0 20px rgba(96, 165, 250, 0.1);
-            text-align: center;
-          }
-
-          .set-username-form h2 {
-            font-size: 2rem;
-            font-weight: 700;
-            background: linear-gradient(90deg, #60a5fa, #f472b6);
-            -webkit-background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 1.5rem;
-          }
-
-          .form-group {
-            margin-bottom: 1.5rem;
-            text-align: left;
-          }
-
-          .form-group label {
-            display: block;
-            font-size: 1rem;
-            margin-bottom: 0.5rem;
-            color: #d1d5db;
-          }
-
-          .form-group input {
-            width: 100%;
-            padding: 0.75rem;
-            border-radius: 0.5rem;
-            border: none;
-            background: rgba(255, 255, 255, 0.1);
-            color: #ffffff;
-            font-size: 1rem;
-            outline: none;
-            box-shadow: 0 0 5px rgba(96, 165, 250, 0.3);
-          }
-
-          .submit-button {
-            background: linear-gradient(90deg, #60a5fa, #f472b6);
-            color: #ffffff;
-            padding: 0.75rem 2rem;
-            border-radius: 2rem;
-            border: none;
-            font-size: 1rem;
-            font-weight: 600;
-            cursor: pointer;
-            box-shadow: 0 0 15px rgba(96, 165, 250, 0.7);
-            transition: box-shadow 0.3s ease;
-          }
-
-          .submit-button:hover {
-            box-shadow: 0 0 25px rgba(244, 114, 182, 0.9);
-          }
-
-          .submit-button:disabled {
-            opacity: 0.5;
-            cursor: not-allowed;
-          }
-
-          .error {
-            color: #ef4444;
-            text-align: center;
-            margin-bottom: 1rem;
-          }
-
-          .loading {
-            text-align: center;
-            color: #9ca3af;
-            margin-bottom: 1rem;
-          }
-        `}
-      </style>
-
-      <div className="set-username-container">
-        <motion.div
-          className="set-username-form"
-          initial={{ opacity: 0, y: 50 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.8 }}
+    <div
+      style={{
+        minHeight: '100vh',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        padding: '24px',
+        backgroundColor: '#000000',
+      }}
+    >
+      <div
+        style={{
+          backgroundColor: '#1C1C1C',
+          padding: '32px',
+          borderRadius: '12px',
+          boxShadow: '0 0 15px #FFFFFF',
+          width: '100%',
+          maxWidth: '480px',
+          border: '1px solid #FFFFFF',
+        }}
+      >
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '8px',
+            marginBottom: '24px',
+          }}
         >
-          <h2>Set Your Username</h2>
-          {error && <p className="error">{error}</p>}
-          {loading && <p className="loading">Saving...</p>}
-          <form onSubmit={handleSubmit}>
-            <div className="form-group">
-              <label htmlFor="username">Username</label>
-              <input
-                type="text"
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                placeholder="e.g., john_doe"
-                required
-              />
-            </div>
-            <motion.button
-              type="submit"
-              className="submit-button"
-              disabled={loading}
-              whileHover={{ scale: loading ? 1 : 1.05 }}
-              whileTap={{ scale: loading ? 1 : 0.95 }}
+          <img
+            src="https://dummyimage.com/32x32/FFF/000?text=Nexlify"
+            alt="Nexlify Logo"
+            style={{ width: '32px', height: '32px' }}
+          />
+          <h2
+            style={{
+              fontSize: '32px',
+              fontWeight: 'bold',
+              color: '#FFFFFF',
+            }}
+          >
+            Sign Up for Nexlify
+          </h2>
+        </div>
+        {error && (
+          <p style={{ color: '#FFFFFF', marginBottom: '16px', textAlign: 'center' }}>{error}</p>
+        )}
+        {loading ? (
+          <LoadingSpinner />
+        ) : (
+          <>
+            <button
+              onClick={handleGoogleSignup}
+              style={{
+                width: '100%',
+                marginTop: '16px',
+                backgroundColor: '#FFFFFF',
+                color: '#000000',
+                padding: '12px',
+                borderRadius: '8px',
+                transition: 'background 0.3s ease',
+                boxShadow: '0 0 5px #FFFFFF',
+              }}
+              onMouseEnter={(e) => (e.target.style.backgroundColor = '#E0E0E0')}
+              onMouseLeave={(e) => (e.target.style.backgroundColor = '#FFFFFF')}
             >
-              {loading ? 'Saving...' : 'Set Username'}
-            </motion.button>
-          </form>
-        </motion.div>
+              Sign Up with Google
+            </button>
+            <p style={{ marginTop: '16px', textAlign: 'center', color: '#FFFFFF' }}>
+              Already have an account?{' '}
+              <a
+                href="/login"
+                style={{ color: '#FFFFFF' }}
+                onMouseEnter={(e) => (e.target.style.textDecoration = 'underline')}
+                onMouseLeave={(e) => (e.target.style.textDecoration = 'none')}
+              >
+                Log in
+              </a>
+            </p>
+          </>
+        )}
       </div>
-    </>
+    </div>
   );
-}
+};
 
-export default SetUsername;
+export default Signup;

@@ -12,7 +12,7 @@ const LoadingSpinner = () => {
       left: 0,
       right: 0,
       bottom: 0,
-      backgroundColor: 'rgba(13, 8, 19, 0.9)', // Added a semi-transparent background
+      backgroundColor: 'rgba(13, 8, 19, 0.8)', // Added a semi-transparent background
       zIndex: 1000 // Ensure it appears above other content
     }}>
       <img
@@ -30,7 +30,7 @@ const LoadingSpinner = () => {
       />
       <div style={{
         display: 'none', // Hidden by default, shown if image fails
-        color: '#e6e6fa',
+        color: '#FFFFFF',
         fontSize: '16px',
         fontWeight: '600'
       }}>

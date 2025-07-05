@@ -3,10 +3,10 @@ import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { db, storage, auth } from '../firebase/firebase';
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
-import { doc, getDoc, updateDoc, arrayUnion } from 'firebase/firestore';
+import { doc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { FiUpload, FiArrowLeft } from 'react-icons/fi';
+import { FiUpload, FiArrowLeft, FiChevronDown } from 'react-icons/fi';
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -22,44 +22,99 @@ const Upload = () => {
   const [error, setError] = useState(null);
   const [mentionQuery, setMentionQuery] = useState('');
   const [showMentionSuggestions, setShowMentionSuggestions] = useState(false);
+  const [modelQuery, setModelQuery] = useState('');
+  const [showModelSuggestions, setShowModelSuggestions] = useState(false);
   const [aspectRatio, setAspectRatio] = useState('1:1');
   const [isDraggingAI, setIsDraggingAI] = useState(false);
   const [isDraggingOriginal, setIsDraggingOriginal] = useState(false);
+  const [showModelDropdown, setShowModelDropdown] = useState(false);
 
   const aiGeneratedInputRef = useRef(null);
   const originalInputRef = useRef(null);
   const captionTextareaRef = useRef(null);
   const promptTextareaRef = useRef(null);
+  const modelInputRef = useRef(null);
 
   const models = [
-    "Midjourney",
-    "DALL·E 3",
-    "Stable Diffusion",
-    "Sora (OpenAI)",
-    "Veo 2 (Google DeepMind)",
-    "Veo 3 (Google DeepMind)",
+    "Midjourney v6.1", "Midjourney",
+    "DALL·E v3", "DALL·E",
+    "Stable Diffusion v3.5", "Stable Diffusion",
+    "Recraft V3", "Recraft",
+    "FLUX1.1 [pro]", "FLUX",
+    "Imagen v2 (Google DeepMind)", "Imagen",
     "Adobe Firefly",
+    "Magic Image (Canva)", "Magic Image",
     "Ideogram",
-    "Leonardo AI",
-    "Pika Labs",
-    "xAI Image Generator (Grok)",
-    "Runway ML Gen Model",
+    "GPT-4o (Chatgpt OpenAI)",
+    "Stable Diffusion XL v1.0", "Stable Diffusion XL",
+    "Phoenix (Leonardo AI)",
+    "Emu (Meta)",
+    "Midjourney v7 Alpha",
+    "Niji v6 (Midjourney)", "Niji",
+    "Sora (OpenAI)",
+    "Runway ML Gen Model v3 Alpha", "Runway ML Gen Model",
+    "Kling AI 2.0 (Kuaishou Technology)", "Kling AI",
+    "Hailuo AI (MiniMax)", "Hailuo AI",
+    "Pika (Pika Labs)", "Pika",
+    "Veo v2 (Google DeepMind)", "Veo",
+    "Dream Machine (Luma Labs)", "Dream Machine",
     "Synthesia",
+    "Adobe Firefly Video",
+    "VideoPoet (Google)", "VideoPoet",
+    "Midjourney v5.2",
+    "Midjourney v5.1",
+    "Midjourney v5",
+    "Midjourney v4",
+    "Midjourney v3",
+    "Midjourney v2",
+    "Midjourney v1",
+    "Stable Diffusion v2.1",
+    "Stable Diffusion v2.0",
+    "Stable Diffusion v1.5",
+    "Stable Diffusion v1.4",
+    "Stable Diffusion v1.3",
+    "Stable Diffusion v1.2",
+    "Stable Diffusion v1.1",
+    "Stable Diffusion XL Turbo",
+    "DALL·E v2",
+    "DALL·E v1",
+    "Seedream 3.0 (ByteDance)", "Seedream",
+    "HiDream-I1-Dev (HiDream)", "HiDream",
+    "FLUX.1 [dev]",
+    "DreamFusion (Google)", "DreamFusion",
+    "Grok (xAI)", "Grok",
+    "Gemini",
+    "Vision (ChatGPT)",
+    "Runway ML Gen Model v4",
+    "Runway ML Gen Model v3 Turbo",
+    "Runway ML Gen Model v2",
+    "Runway ML Gen Model v1",
+    "Kaiber v2", "Kaiber",
+    "Kaiber v1",
+    "Hunyuan Video (Tencent)",
+    "VideoCrafter1 (Tencent)", "VideoCrafter",
+    "Veo v3 (Google DeepMind)",
     "DeepBrain AI",
     "Rephrase.ai",
-    "Imagen 2 (Google DeepMind)",
-    "Emu (Meta)",
-    "Make-A-Video (Meta)",
-    "DreamFusion (Google - 3D from text)",
-    "Phenaki (Google - long video from text)"
+    "LTX Studio (Lightricks)",
+    "Colossyan",
+    "Wan 2.1 (Alibaba)", "Wan",
+    "Hunyuan-Video-Fast (WaveSpeed AI)", "Hunyuan-Video",
+    "Step-Video (WaveSpeed AI)", "Step-Video",
+    "Mochi 1 (Genmo AI)", "Mochi",
+    "Niji v5 (Midjourney)",
+    "Niji (Midjourney)",
+    "beta (Midjourney)",
+    "test (Midjourney)",
+    "testp (Midjourney)"
   ];
 
   const mockUsers = [
     { username: 'gaurav1', displayName: 'Gaurav' },
-    { username: 'alice123', displayName: 'Alice' },
+    { username: 'gaurav', displayName: 'Gaurav' },
     { username: 'bobsmith', displayName: 'Bob Smith' },
-    { username: 'charlie_x', displayName: 'Charlie' },
-    { username: 'diana99', displayName: 'Diana' }
+    { username: 'charlie', displayName: 'Charlie' },
+    { username: 'diana1', displayName: 'Diana' }
   ];
 
   const aspectRatios = [
@@ -120,6 +175,8 @@ const Upload = () => {
     setError(null);
     setMentionQuery('');
     setShowMentionSuggestions(false);
+    setModelQuery('');
+    setShowModelSuggestions(false);
     setStep((prev) => prev - 1);
   };
 
@@ -138,24 +195,23 @@ const Upload = () => {
     setError(null);
 
     try {
-      const userDocRef = doc(db, 'users', user.uid);
-      const userDoc = await getDoc(userDocRef);
+      const postId = Date.now().toString();
 
-      if (!userDoc.exists()) {
-        await updateDoc(userDocRef, { username: 'gaurav1', posts: [] });
-      }
-
-      const aiGeneratedRef = ref(storage, `${user.uid}/ai-generated/${Date.now()}-${aiGeneratedFile.name}`);
+      // Upload AI-generated file
+      const aiGeneratedRef = ref(storage, `posts/${user.uid}/${postId}/ai-generated/${aiGeneratedFile.name}`);
       await uploadBytes(aiGeneratedRef, aiGeneratedFile);
       const aiGeneratedUrl = await getDownloadURL(aiGeneratedRef);
 
+      // Upload original file if provided
       let originalUrl = '';
       if (originalFile) {
-        const originalRef = ref(storage, `${user.uid}/original/${Date.now()}-${originalFile.name}`);
+        const originalRef = ref(storage, `posts/${user.uid}/${postId}/original/${originalFile.name}`);
         await uploadBytes(originalRef, originalFile);
         originalUrl = await getDownloadURL(originalRef);
       }
 
+      // Create post document in the 'posts' collection
+      const postRef = doc(db, 'posts', postId);
       const post = {
         aiGeneratedUrl,
         originalUrl: originalUrl || '',
@@ -163,16 +219,22 @@ const Upload = () => {
         promptUsed,
         chatLink,
         caption,
-        createdAt: new Date().toISOString(),
-        username: userDoc.data()?.username || 'gaurav1',
-        likes: 0,
+        createdAt: serverTimestamp(),
+        userId: user.uid,
+        username: user.displayName || 'gaurav1',
+        profilePic: user.photoURL || 'https://dummyimage.com/30x30/000/fff?text=User',
+        upvotes: 0,
+        downvotes: 0,
+        upvotedBy: [],
+        downvotedBy: [],
         comments: [],
       };
 
-      await updateDoc(userDocRef, { posts: arrayUnion(post) });
+      await setDoc(postRef, post);
+
       navigate('/feed');
     } catch (err) {
-      setError(err.message);
+      setError('Failed to upload post: ' + err.message);
     } finally {
       setLoading(false);
     }
@@ -205,6 +267,24 @@ const Upload = () => {
     const textarea = promptTextareaRef.current;
     textarea.style.height = 'auto';
     textarea.style.height = `${textarea.scrollHeight}px`;
+  };
+
+  const handleModelChange = (e) => {
+    const value = e.target.value;
+    setModelUsed(value);
+    setModelQuery(value.toLowerCase());
+    setShowModelSuggestions(value.length > 0);
+  };
+
+  const handleModelSelect = (model) => {
+    setModelUsed(model);
+    setModelQuery('');
+    setShowModelSuggestions(false);
+  };
+
+  const handleModelDropdownSelect = (model) => {
+    setModelUsed(model);
+    setShowModelDropdown(false);
   };
 
   const handleMentionSelect = (username) => {
@@ -494,28 +574,114 @@ const Upload = () => {
 
                 {/* Right Side: Inputs */}
                 <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: '1.5rem' }}>
-                  <div>
+                  <div style={{ position: 'relative' }}>
                     <label style={{ display: 'block', color: '#FFFFFF', marginBottom: '8px', fontWeight: '600' }}>
                       Model Used (Optional)
                     </label>
-                    <select
-                      value={modelUsed}
-                      onChange={(e) => setModelUsed(e.target.value)}
-                      style={{
+                    <div style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                      <input
+                        ref={modelInputRef}
+                        type="text"
+                        value={modelUsed}
+                        onChange={handleModelChange}
+                        placeholder="Type a model name..."
+                        style={{
+                          width: '100%',
+                          padding: '8px',
+                          paddingRight: '40px',
+                          backgroundColor: '#000000',
+                          borderRadius: '8px',
+                          color: '#FFFFFF',
+                          border: '1px solid #FFFFFF',
+                          fontSize: '16px'
+                        }}
+                      />
+                      <motion.button
+                        onClick={() => setShowModelDropdown(!showModelDropdown)}
+                        style={{
+                          position: 'absolute',
+                          right: '8px',
+                          backgroundColor: 'transparent',
+                          border: 'none',
+                          color: '#FFFFFF',
+                          cursor: 'pointer',
+                          padding: '4px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center'
+                        }}
+                        whileHover={{ scale: 1.1 }}
+                        whileTap={{ scale: 0.9 }}
+                      >
+                        <FiChevronDown size={20} />
+                      </motion.button>
+                    </div>
+                    {showModelSuggestions && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        left: 0,
                         width: '100%',
-                        padding: '8px',
-                        backgroundColor: '#000000',
+                        backgroundColor: '#111111',
                         borderRadius: '8px',
-                        color: '#FFFFFF',
                         border: '1px solid #FFFFFF',
-                        fontSize: '16px'
-                      }}
-                    >
-                      <option value="" style={{ color: '#FFFFFF' }}>Select a model</option>
-                      {models.map((model) => (
-                        <option key={model} value={model} style={{ color: '#FFFFFF' }}>{model}</option>
-                      ))}
-                    </select>
+                        maxHeight: '150px',
+                        overflowY: 'auto',
+                        zIndex: 10,
+                        marginTop: '0.5rem'
+                      }}>
+                        {models
+                          .filter((model) => model.toLowerCase().includes(modelQuery))
+                          .map((model) => (
+                            <div
+                              key={model}
+                              onClick={() => handleModelSelect(model)}
+                              style={{
+                                padding: '8px',
+                                color: '#FFFFFF',
+                                cursor: 'pointer',
+                                borderBottom: '1px solid #333333'
+                              }}
+                              onMouseEnter={(e) => (e.target.style.backgroundColor = '#333333')}
+                              onMouseLeave={(e) => (e.target.style.backgroundColor = 'transparent')}
+                            >
+                              {model}
+                            </div>
+                          ))}
+                      </div>
+                    )}
+                    {showModelDropdown && (
+                      <div style={{
+                        position: 'absolute',
+                        top: '100%',
+                        right: 0,
+                        width: '200px',
+                        backgroundColor: '#111111',
+                        borderRadius: '8px',
+                        border: '1px solid #FFFFFF',
+                        maxHeight: '150px',
+                        overflowY: 'auto',
+                        zIndex: 10,
+                        marginTop: '0.5rem'
+                      }}>
+                        {models.map((model) => (
+                          <div
+                            key={model}
+                            onClick={() => handleModelDropdownSelect(model)}
+                            style={{
+                              padding: '8px',
+                              color: '#FFFFFF',
+                              cursor: 'pointer',
+                              borderBottom: '1px solid #333333'
+                            }}
+                            onMouseEnter={(e) => (e.target.style.backgroundColor = '#333333')}
+                            onMouseLeave={(e) => (e.target.style.backgroundColor = 'transparent')}
+                          >
+                            {model}
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
                   <div>
                     <label style={{ display: 'block', color: '#FFFFFF', marginBottom: '8px', fontWeight: '600' }}>

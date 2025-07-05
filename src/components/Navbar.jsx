@@ -64,7 +64,7 @@ const Navbar = () => {
                 textDecoration: 'none'
               }
             }}>
-              KRYOON.AI
+              Kryoon
             </Link>
           </div>
         </div>

@@ -9,8 +9,10 @@ import Profile from './pages/Profile';
 import Login from './pages/Login';
 import Signup from './pages/Signup';
 import Explore from './pages/Explore';
+import SetUsername from './pages/SetUsername';
 import Home from './pages/Home';
-
+import TermsAndConditions from './pages/TermsAndConditions';
+import EditProfile from './pages/EditProfile';
 const App = () => {
   return (
     <Router>
@@ -20,12 +22,15 @@ const App = () => {
   <Route path="/" element={<Home />} />
   <Route path="/feed" element={<Feed />} />
   <Route path="/post/:userId/:postId" element={<PostDetail />} />
-  <Route path="/contribute/:userId/:postId/:nodeId" element={<ContributePage />} />
+  <Route path="/contribute/:userId/:postId/:nodeId?" element={<ContributePage />} />
   <Route path="/upload" element={<Upload />} />
-  <Route path="/profile/:userId" element={<Profile />} />
-  <Route path="/login" element={<Login />} />
   <Route path="/signup" element={<Signup />} />
+  <Route path="/login" element={<Login />} />
+  <Route path="/set-username" element={<SetUsername />} /> {/* Optional route */}
+  <Route path="/profile/:userId" element={<Profile />} />
   <Route path="/explore" element={<Explore />} />
+  <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
+  <Route path="/edit-profile/:userId" element={<EditProfile />} />
 </Routes>
       </div>
     </Router>
