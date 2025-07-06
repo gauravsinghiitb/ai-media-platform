@@ -582,7 +582,7 @@ const Profile = () => {
       </div>
 
       <div style={{
-        columnCount: 3,
+        columnCount: 5,
         columnGap: '10px',
         maxWidth: '1400px',
         margin: '0 auto',

@@ -1,18 +1,35 @@
 import React, { useState, useEffect } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useNavigate, useLocation } from 'react-router-dom';
 import { auth } from '../firebase/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import {
+  FaHome,
+  FaCompass,
+  FaUpload,
+  FaUser,
+  FaSignOutAlt,
+  FaTh,
+  FaLightbulb,
+  FaBookmark,
+  FaChevronRight,
+  FaChevronLeft
+} from 'react-icons/fa';
+import { motion } from 'framer-motion';
 
 const Navbar = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const [user, setUser] = useState(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(window.innerWidth >= 769);
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
       setUser(currentUser);
     });
-    return () => unsubscribe();
+
+    const handleResize = () => setIsMenuOpen(window.innerWidth >= 769);
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
   }, []);
 
   const handleLogout = async () => {
@@ -24,358 +41,167 @@ const Navbar = () => {
     }
   };
 
-  const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen);
+  const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
+
+  const navVariants = {
+    expanded: { width: '200px' },
+    collapsed: { width: '80px' },
   };
 
+  const navLinks = [
+    { to: '/', icon: <FaHome />, label: 'Home' },
+    { to: '/explore', icon: <FaCompass />, label: 'Explore' },
+    { to: '/upload', icon: <FaUpload />, label: 'Upload' },
+    { to: `/profile/${user?.uid}/posts`, icon: <FaTh />, label: 'Posts' },
+    { to: `/profile/${user?.uid}/contributions`, icon: <FaLightbulb />, label: 'Contributions' },
+    { to: `/profile/${user?.uid}/saved`, icon: <FaBookmark />, label: 'Saved Posts' },
+    { to: `/profile/${user?.uid}`, icon: <FaUser />, label: 'Profile' },
+  ];
+
   return (
-    <nav style={{
-      backgroundColor: '#000000',
-      padding: '16px',
-      boxShadow: '0 0 10px #333',
-      borderBottom: '1px solid #fff',
-      position: 'sticky',
-      top: 0,
-      zIndex: 50
-    }}>
-      <div style={{
-        maxWidth: '1200px',
-        margin: '0 auto',
-        display: 'flex',
-        justifyContent: 'space-between',
-        alignItems: 'center'
-      }}>
-        {/* Brand Logo and Name */}
-        {/* Brand Logo and Name */}
-          {/* Brand Logo and Name */}
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <img src="/logo_white_new.png" alt="Nexlify Logo" style={{ width: '30px', height: '30px' }} />
-          <div style={{
-            fontSize: '24px',
-            fontWeight: 'bold',
-            letterSpacing: '1px',
-            textShadow: '0 0 5px #333'
-          }}>
-            <Link to="/" style={{
-              color: '#ffffff',
-              textDecoration: 'none',
-              '&:hover': {
-                color: '#ffffff',
-                textDecoration: 'none'
-              }
-            }}>
-              Kryoon
-            </Link>
+    <>
+      <style>
+        {`
+          @keyframes rotateBorder {
+            0% { border-color: #00ffff; }
+            50% { border-color: #ff00ff; }
+            100% { border-color: #00ffff; }
+          }
+
+          nav {
+            border-right: 3px solid transparent;
+            animation: rotateBorder 2s linear infinite;
+          }
+
+          .nav-item {
+            transition: all 0.3s ease;
+            width: 100%;
+          }
+
+          .nav-item:hover {
+            background: rgba(255, 255, 255, 0.07);
+            transform: scale(1.03);
+            border-radius: 8px;
+          }
+
+          .active-icon {
+            font-size: 1.5rem;
+            position: relative;
+          }
+
+          .active-icon::after {
+            content: '';
+            position: absolute;
+            bottom: -4px;
+            left: 0;
+            width: 100%;
+            height: 3px;
+            background: linear-gradient(90deg, #00ffff, #ff00ff);
+            animation: rotateBorder 1.5s infinite linear;
+            border-radius: 2px;
+          }
+        `}
+      </style>
+      <motion.nav
+        variants={navVariants}
+        initial={isMenuOpen ? 'expanded' : 'collapsed'}
+        animate={isMenuOpen ? 'expanded' : 'collapsed'}
+        transition={{ duration: 0.3 }}
+        style={{
+          background: '#000000',
+          padding: '16px 0',
+          position: 'fixed',
+          top: 0,
+          left: 0,
+          height: '100vh',
+          zIndex: 1000,
+          overflow: 'hidden',
+          cursor: 'pointer',
+          display: 'flex',
+          flexDirection: 'column',
+          borderTopRightRadius: '16px',
+          borderBottomRightRadius: '16px',
+        }}
+      >
+        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+            <img src="/logo_white_new.png" alt="Logo" style={{ width: '30px', height: '30px' }} />
+            {isMenuOpen && <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '18px' }}>Kryoon</div>}
           </div>
-        </div>
-        {/* Hamburger Menu for Mobile */}
-        <div style={{ display: 'none', '@media (max-width: 768px)': { display: 'block' } }}>
-          <button onClick={toggleMenu} style={{ color: '#ffffff', outline: 'none' }}>
-            <svg style={{ width: '24px', height: '24px' }} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                strokeLinecap="round"
-                strokeLinejoin="round"
-                strokeWidth="2"
-                d={isMenuOpen ? 'M6 18L18 6M6 6l12 12' : 'M4 6h16M4 12h16m-7 6h7'}
-              />
-            </svg>
+          <button
+            onClick={toggleMenu}
+            style={{
+              color: '#ffffff',
+              background: 'none',
+              border: 'none',
+              cursor: 'pointer',
+              marginTop: '1rem',
+            }}
+          >
+            {isMenuOpen ? <FaChevronLeft size={20} /> : <FaChevronRight size={20} />}
           </button>
         </div>
 
-        {/* Links - Desktop */}
-        <div style={{
-          display: 'flex',
-          gap: '24px',
-          alignItems: 'center',
-          '@media (max-width: 768px)': { display: 'none' }
-        }}>
-          <Link to="/" style={{
-            color: '#ffffff',
-            position: 'relative',
-            transition: 'color 0.3s ease',
-            textShadow: '0 0 3px #333'
+        <div
+          style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'flex-start',
+            paddingLeft: '16px',
+            paddingRight: '16px',
+            gap: '16px',
+            marginTop: '32px',
+            width: '100%',
           }}
-          onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-          onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Home
-            <span style={{
-              position: 'absolute',
-              left: 0,
-              bottom: 0,
-              width: 0,
-              height: '2px',
-              backgroundColor: '#ffffff',
-              transition: 'width 0.3s ease'
-            }}
-            onMouseEnter={(e) => e.target.style.width = '100%'}
-            onMouseLeave={(e) => e.target.style.width = '0'}
-            />
-          </Link>
-          <Link to="/feed" style={{
-            color: '#ffffff',
-            position: 'relative',
-            transition: 'color 0.3s ease',
-            textShadow: '0 0 3px #333'
-          }}
-          onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-          onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Feed
-            <span style={{
-              position: 'absolute',
-              left: 0,
-              bottom: 0,
-              width: 0,
-              height: '2px',
-              backgroundColor: '#ffffff',
-              transition: 'width 0.3s ease'
-            }}
-            onMouseEnter={(e) => e.target.style.width = '100%'}
-            onMouseLeave={(e) => e.target.style.width = '0'}
-            />
-          </Link>
-          <Link to="/explore" style={{
-            color: '#ffffff',
-            position: 'relative',
-            transition: 'color 0.3s ease',
-            textShadow: '0 0 3px #333'
-          }}
-          onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-          onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Explore
-            <span style={{
-              position: 'absolute',
-              left: 0,
-              bottom: 0,
-              width: 0,
-              height: '2px',
-              backgroundColor: '#ffffff',
-              transition: 'width 0.3s ease'
-            }}
-            onMouseEnter={(e) => e.target.style.width = '100%'}
-            onMouseLeave={(e) => e.target.style.width = '0'}
-            />
-          </Link>
-          <Link to="/upload" style={{
-            color: '#ffffff',
-            position: 'relative',
-            transition: 'color 0.3s ease',
-            textShadow: '0 0 3px #333'
-          }}
-          onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-          onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Upload
-            <span style={{
-              position: 'absolute',
-              left: 0,
-              bottom: '0',
-              width: 0,
-              height: '2px',
-              backgroundColor: '#ffffff',
-              transition: 'width 0.3s ease'
-            }}
-            onMouseEnter={(e) => e.target.style.width = '100%'}
-            onMouseLeave={(e) => e.target.style.width = '0'}
-            />
-          </Link>
-          {user ? (
-            <>
-              <Link to={`/profile/${user.uid}`} style={{
-                color: '#ffffff',
-                position: 'relative',
-                transition: 'color 0.3s ease',
-                textShadow: '0 0 3px #333'
-              }}
-              onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-              onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-              >
-                Profile
-                <span style={{
-                  position: 'absolute',
-                  left: 0,
-                  bottom: 0,
-                  width: 0,
-                  height: '2px',
-                  backgroundColor: '#ffffff',
-                  transition: 'width 0.3s ease'
-                }}
-                onMouseEnter={(e) => e.target.style.width = '100%'}
-                onMouseLeave={(e) => e.target.style.width = '0'}
-                />
-              </Link>
-              <button
-                onClick={handleLogout}
-                style={{
-                  color: '#000000',
-                  background: '#ffffff',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  transition: 'background 0.3s ease',
-                  boxShadow: '0 0 5px #333'
-                }}
-                onMouseEnter={(e) => e.target.style.background = '#cccccc'}
-                onMouseLeave={(e) => e.target.style.background = '#ffffff'}
-              >
-                Logout
-              </button>
-            </>
-          ) : (
-            <>
-              <Link to="/login" style={{
-                color: '#ffffff',
-                position: 'relative',
-                transition: 'color 0.3s ease',
-                textShadow: '0 0 3px #333'
-              }}
-              onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-              onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-              >
-                Login
-                <span style={{
-                  position: 'absolute',
-                  left: 0,
-                  bottom: 0,
-                  width: 0,
-                  height: '2px',
-                  backgroundColor: '#ffffff',
-                  transition: 'width 0.3s ease'
-                }}
-                onMouseEnter={(e) => e.target.style.width = '100%'}
-                onMouseLeave={(e) => e.target.style.width = '0'}
-                />
-              </Link>
-              <Link to="/signup" style={{
-                color: '#000000',
-                background: '#ffffff',
-                padding: '8px 16px',
-                borderRadius: '8px',
-                transition: 'background 0.3s ease',
-                boxShadow: '0 0 5px #333'
-              }}
-              onMouseEnter={(e) => e.target.style.background = '#cccccc'}
-              onMouseLeave={(e) => e.target.style.background = '#ffffff'}
-              >
-                Signup
-              </Link>
-            </>
-          )}
-        </div>
-      </div>
+        >
+          {navLinks.map(({ to, icon, label }) => {
+            const isActive = location.pathname === to;
+            return (
+              <div key={label} className="nav-item">
+                <Link
+                  to={to}
+                  title={!isMenuOpen ? label : undefined}
+                  style={{
+                    color: '#ffffff',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'flex-start',
+                    padding: '8px',
+                    textDecoration: 'none',
+                    width: '100%',
+                    fontWeight: 500,
+                  }}
+                >
+                  <span className={isActive ? 'active-icon' : ''} style={{ marginRight: isMenuOpen ? '8px' : 0 }}>{icon}</span>
+                  {isMenuOpen && label}
+                </Link>
+              </div>
+            );
+          })}
 
-      {/* Mobile Menu */}
-      {isMenuOpen && (
-        <div style={{
-          marginTop: '16px',
-          display: 'flex',
-          flexDirection: 'column',
-          gap: '16px',
-          backgroundColor: '#000000',
-          padding: '16px',
-          borderRadius: '8px',
-          boxShadow: '0 0 10px #333',
-          '@media (min-width: 769px)': { display: 'none' }
-        }}>
-          <Link
-            to="/"
-            onClick={toggleMenu}
-            style={{ color: '#ffffff', transition: 'color 0.3s ease', textShadow: '0 0 3px #333' }}
-            onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-            onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Home
-          </Link>
-          <Link
-            to="/feed"
-            onClick={toggleMenu}
-            style={{ color: '#ffffff', transition: 'color 0.3s ease', textShadow: '0 0 3px #333' }}
-            onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-            onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Feed
-          </Link>
-          <Link
-            to="/explore"
-            onClick={toggleMenu}
-            style={{ color: '#ffffff', transition: 'color 0.3s ease', textShadow: '0 0 3px #333' }}
-            onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-            onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Explore
-          </Link>
-          <Link
-            to="/upload"
-            onClick={toggleMenu}
-            style={{ color: '#ffffff', transition: 'color 0.3s ease', textShadow: '0 0 3px #333' }}
-            onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-            onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-          >
-            Upload
-          </Link>
-          {user ? (
-            <>
-              <Link
-                to={`/profile/${user.uid}`}
-                onClick={toggleMenu}
-                style={{ color: '#ffffff', transition: 'color 0.3s ease', textShadow: '0 0 3px #333' }}
-                onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-                onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-              >
-                Profile
-              </Link>
-              <button
-                onClick={() => {
-                  handleLogout();
-                  toggleMenu();
-                }}
-                style={{
-                  color: '#000000',
-                  background: '#ffffff',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  transition: 'background 0.3s ease',
-                  boxShadow: '0 0 5px #333'
-                }}
-                onMouseEnter={(e) => e.target.style.background = '#cccccc'}
-                onMouseLeave={(e) => e.target.style.background = '#ffffff'}
-              >
-                Logout
-              </button>
-            </>
-          ) : (
-            <>
-              <Link
-                to="/login"
-                onClick={toggleMenu}
-                style={{ color: '#ffffff', transition: 'color 0.3s ease', textShadow: '0 0 3px #333' }}
-                onMouseEnter={(e) => e.target.style.color = '#cccccc'}
-                onMouseLeave={(e) => e.target.style.color = '#ffffff'}
-              >
-                Login
-              </Link>
-              <Link
-                to="/signup"
-                onClick={toggleMenu}
-                style={{
-                  color: '#000000',
-                  background: '#ffffff',
-                  padding: '8px 16px',
-                  borderRadius: '8px',
-                  transition: 'background 0.3s ease',
-                  boxShadow: '0 0 5px #333'
-                }}
-                onMouseEnter={(e) => e.target.style.background = '#cccccc'}
-                onMouseLeave={(e) => e.target.style.background = '#ffffff'}
-              >
-                Signup
-              </Link>
-            </>
-          )}
+          <div className="nav-item">
+            <button
+              onClick={handleLogout}
+              title={!isMenuOpen ? 'Logout' : undefined}
+              style={{
+                color: '#ffffff',
+                background: 'none',
+                padding: '8px',
+                border: 'none',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'flex-start',
+                width: '100%',
+              }}
+            >
+              <FaSignOutAlt style={{ marginRight: isMenuOpen ? '8px' : 0 }} />
+              {isMenuOpen && 'Logout'}
+            </button>
+          </div>
         </div>
-      )}
-    </nav>
+      </motion.nav>
+    </>
   );
 };
 

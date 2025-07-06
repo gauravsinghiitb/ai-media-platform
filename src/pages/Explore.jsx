@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
-import { motion } from 'framer-variants';
+import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase/firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
@@ -53,13 +53,14 @@ const Explore = () => {
           const userData = userDoc.data();
           allUsers.push({ id: userDoc.id, ...userData, username: userData.username?.username, profilePic: userData.profilePic });
         });
-        console.log('Users fetched:', allUsers.length, 'Sample:', allUsers.slice(0, 2));
+        console.log('Users fetched:', allUsers.length, allUsers);
 
         console.log('Fetching posts...');
         const postsSnapshot = await getDocs(collection(db, 'posts'));
         const allPosts = [];
         postsSnapshot.forEach((postDoc) => {
           const postData = postDoc.data();
+          console.log('Post data:', postDoc.id, postData);
           const userId = postData.userId || postDoc.id;
           if (postData.aiGeneratedUrl) {
             allPosts.push({
@@ -75,7 +76,7 @@ const Explore = () => {
             });
           }
         });
-        console.log('Posts fetched:', allPosts.length, 'Sample:', allPosts.slice(0, 2));
+        console.log('Posts fetched:', allPosts.length, allPosts);
 
         console.log('Fetching contributions...');
         const contributionsSnapshot = await getDocs(collection(db, 'contributions'));
@@ -101,7 +102,7 @@ const Explore = () => {
             });
           }
         });
-        console.log('Contributions fetched:', allContributions.length, 'Sample:', allContributions.slice(0, 2));
+        console.log('Contributions fetched:', allContributions.length, allContributions);
 
         setUsers(allUsers);
         setPosts(allPosts);
@@ -141,11 +142,14 @@ const Explore = () => {
       const handleSearch = (query) => {
         const filterData = () => {
           const q = query.toLowerCase().trim();
+          console.log('Search query:', q);
           if (!q) {
             if (selectedCategories.length > 0) {
               const filteredItems = filterItemsByCategories(selectedCategories);
+              console.log('Applying category filter, filtered posts:', filteredItems.posts);
               setFilteredResults({ users: [], posts: filteredItems.posts, contributions: filteredItems.contributions });
             } else {
+              console.log('No search or categories, resetting filtered results');
               setFilteredResults({ users: [], posts: [], contributions: [] });
             }
             return;
@@ -154,6 +158,7 @@ const Explore = () => {
           const filteredUsers = users.filter((user) =>
             user.username?.toLowerCase().startsWith(q)
           );
+          console.log('Filtered users:', filteredUsers);
 
           const filteredPosts = posts.filter((post) =>
             post.modelUsed?.toLowerCase().includes(q) ||
@@ -161,12 +166,14 @@ const Explore = () => {
             post.caption?.toLowerCase().includes(q) ||
             post.username?.toLowerCase().includes(q)
           );
+          console.log('Filtered posts:', filteredPosts);
 
           const filteredContributions = contributions.filter((contrib) =>
             contrib.model?.toLowerCase().includes(q) ||
             contrib.prompt?.toLowerCase().includes(q) ||
             contrib.username?.toLowerCase().includes(q)
           );
+          console.log('Filtered contributions:', filteredContributions);
 
           setFilteredResults({ users: filteredUsers, posts: filteredPosts, contributions: filteredContributions });
         };
@@ -179,10 +186,17 @@ const Explore = () => {
   );
 
   useEffect(() => {
+    console.log('useEffect triggered with selectedCategories:', selectedCategories);
     debouncedSearch(searchQuery);
-  }, [searchQuery, debouncedSearch]);
+    setFilteredResults(prev => {
+      const newResults = selectedCategories.length > 0 ? filterItemsByCategories(selectedCategories) : { posts: [], contributions: [] };
+      console.log('Setting filteredResults to:', newResults);
+      return { ...prev, ...newResults, users: [] };
+    });
+  }, [searchQuery, debouncedSearch, selectedCategories]);
 
   const filterItemsByCategories = (selectedCats) => {
+    console.log('Filtering by categories:', selectedCats);
     const selectedCategoryObjects = categories.filter((cat) => selectedCats.includes(cat.name));
     let filteredPosts = [];
     let filteredContributions = [];
@@ -210,6 +224,9 @@ const Explore = () => {
       filteredContributions = [...filteredContributions, ...contributionsForCategory];
     });
 
+    console.log('Filtered posts by category:', filteredPosts);
+    console.log('Filtered contributions by category:', filteredContributions);
+
     return {
       posts: [...new Set(filteredPosts.map((post) => JSON.stringify(post)))].map((post) => JSON.parse(post)),
       contributions: [...new Set(filteredContributions.map((contrib) => JSON.stringify(contrib)))].map((contrib) => JSON.parse(contrib))
@@ -217,17 +234,19 @@ const Explore = () => {
   };
 
   const handleFilterByCategory = (category) => {
+    console.log('Category clicked:', category.name);
     setSelectedCategories((prev) => {
-      if (prev.includes(category.name)) {
-        return prev.filter((cat) => cat !== category.name);
-      } else {
-        return [...prev, category.name];
-      }
+      const newSelected = prev.includes(category.name)
+        ? prev.filter((cat) => cat !== category.name)
+        : [...prev, category.name];
+      console.log('Updated selectedCategories:', newSelected);
+      return newSelected;
     });
     setSearchQuery('');
   };
 
   const resetFilters = () => {
+    console.log('Resetting filters');
     setSearchQuery('');
     setSelectedCategories([]);
     setFilteredResults({ users: [], posts: [], contributions: [] });
@@ -252,7 +271,7 @@ const Explore = () => {
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#000000', paddingBottom: '4rem' }}>
+    <div style={{ minHeight: '100vh', backgroundColor: '#000000', padding: '2rem 1rem 2rem 250px' }}>
       <SearchGenresModelsContributions
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}

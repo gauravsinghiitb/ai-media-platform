@@ -4,6 +4,7 @@ import Card from './Card';
 import ContributionCard from './ContributionCard';
 
 const SearchPosts = ({ filteredPosts, filteredContributions }) => {
+  console.log('SearchPosts rendering with filteredPosts:', filteredPosts, 'length:', filteredPosts.length, 'filteredContributions:', filteredContributions, 'length:', filteredContributions.length);
   return (
     (filteredPosts.length > 0 || filteredContributions.length > 0) && (
       <motion.section

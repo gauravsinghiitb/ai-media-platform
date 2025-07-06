@@ -13,6 +13,12 @@ import SetUsername from './pages/SetUsername';
 import Home from './pages/Home';
 import TermsAndConditions from './pages/TermsAndConditions';
 import EditProfile from './pages/EditProfile';
+import UserPosts from './pages/UserPosts';
+import UserContributions from './pages/UserContributions';
+import UserSavedPosts from './pages/UserSavedPosts';
+// import Layout from './components/Layout';
+
+
 const App = () => {
   return (
     <Router>
@@ -31,6 +37,9 @@ const App = () => {
   <Route path="/explore" element={<Explore />} />
   <Route path="/terms-and-conditions" element={<TermsAndConditions />} />
   <Route path="/edit-profile/:userId" element={<EditProfile />} />
+  <Route path="/profile/:userId/posts" element={<UserPosts />} />
+  <Route path="/profile/:userId/contributions" element={<UserContributions/>} />
+  <Route path="/profile/:userId/saved" element={<UserSavedPosts />} />
 </Routes>
       </div>
     </Router>
