@@ -4,16 +4,17 @@ import { useNavigate } from 'react-router-dom';
 import { db, auth } from '../firebase/firebase';
 import { collection, getDocs, doc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import SearchUsers from '../components/SearchUsers';
 import SearchPosts from '../components/SearchPosts';
 import SearchGenresModelsContributions from '../components/SearchGenresModelsContributions';
-import ModelButtonCategories from '../components/ModelButtonCategories';
 import LoadingSpinner from '../components/LoadingSpinner';
-import { models } from '../data/models';
+import Masonry from 'react-masonry-css';
+import Card from '../components/Card';
+import { models } from '../data/models.js';
 
 const Explore = () => {
   const navigate = useNavigate();
   const [searchQuery, setSearchQuery] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
   const [users, setUsers] = useState([]);
   const [posts, setPosts] = useState([]);
   const [contributions, setContributions] = useState([]);
@@ -21,13 +22,6 @@ const Explore = () => {
   const [loading, setLoading] = useState(true);
   const [currentUser, setCurrentUser] = useState(null);
   const [following, setFollowing] = useState([]);
-  const [selectedCategories, setSelectedCategories] = useState([]);
-
-  const categories = [
-    ...models.map(model => ({ name: model, filter: model.toLowerCase(), type: "model" })).sort((a, b) => a.name.localeCompare(b.name)),
-    { name: "Ghibli Art", filter: "ghibli", type: "genre" },
-    { name: "Anime Style", filter: "anime", type: "genre" },
-  ];
 
   useEffect(() => {
     const unsubscribe = onAuthStateChanged(auth, (user) => {
@@ -46,21 +40,22 @@ const Explore = () => {
 
     const fetchData = async () => {
       try {
-        console.log('Fetching users...');
         const usersSnapshot = await getDocs(collection(db, 'users'));
         const allUsers = [];
         usersSnapshot.forEach((userDoc) => {
           const userData = userDoc.data();
-          allUsers.push({ id: userDoc.id, ...userData, username: userData.username?.username, profilePic: userData.profilePic });
+          allUsers.push({
+            id: userDoc.id,
+            ...userData,
+            username: userData.username?.username,
+            profilePic: userData.profilePic
+          });
         });
-        console.log('Users fetched:', allUsers.length, allUsers);
 
-        console.log('Fetching posts...');
         const postsSnapshot = await getDocs(collection(db, 'posts'));
         const allPosts = [];
         postsSnapshot.forEach((postDoc) => {
           const postData = postDoc.data();
-          console.log('Post data:', postDoc.id, postData);
           const userId = postData.userId || postDoc.id;
           if (postData.aiGeneratedUrl) {
             allPosts.push({
@@ -76,9 +71,7 @@ const Explore = () => {
             });
           }
         });
-        console.log('Posts fetched:', allPosts.length, allPosts);
 
-        console.log('Fetching contributions...');
         const contributionsSnapshot = await getDocs(collection(db, 'contributions'));
         const allContributions = [];
         contributionsSnapshot.forEach((contribDoc) => {
@@ -102,7 +95,6 @@ const Explore = () => {
             });
           }
         });
-        console.log('Contributions fetched:', allContributions.length, allContributions);
 
         setUsers(allUsers);
         setPosts(allPosts);
@@ -119,16 +111,6 @@ const Explore = () => {
     return () => unsubscribe();
   }, []);
 
-  const getUsernameFromUserId = async (userId) => {
-    try {
-      const userDoc = await getDoc(doc(db, 'users', userId));
-      return userDoc.exists() ? userDoc.data().username?.username : null;
-    } catch (err) {
-      console.error('Error fetching username:', err.message);
-      return null;
-    }
-  };
-
   const debouncedSearch = useCallback(
     useMemo(() => {
       const debounce = (func, delay) => {
@@ -139,156 +121,133 @@ const Explore = () => {
         };
       };
 
-      const handleSearch = (query) => {
-        const filterData = () => {
-          const q = query.toLowerCase().trim();
-          console.log('Search query:', q);
-          if (!q) {
-            if (selectedCategories.length > 0) {
-              const filteredItems = filterItemsByCategories(selectedCategories);
-              console.log('Applying category filter, filtered posts:', filteredItems.posts);
-              setFilteredResults({ users: [], posts: filteredItems.posts, contributions: filteredItems.contributions });
-            } else {
-              console.log('No search or categories, resetting filtered results');
-              setFilteredResults({ users: [], posts: [], contributions: [] });
-            }
-            return;
-          }
+      const handleSearch = (query, model) => {
+        const q = query.toLowerCase().trim();
+        if (!q && !model) {
+          setFilteredResults({ users: [], posts: [], contributions: [] });
+          return;
+        }
 
-          const filteredUsers = users.filter((user) =>
-            user.username?.toLowerCase().startsWith(q)
-          );
-          console.log('Filtered users:', filteredUsers);
+        const filteredUsers = users.filter((user) =>
+          user.username?.toLowerCase().startsWith(q)
+        );
 
-          const filteredPosts = posts.filter((post) =>
+        let filteredPosts = posts;
+        let filteredContributions = contributions;
+
+        if (model) {
+          filteredPosts = posts.filter((post) => post.modelUsed === model);
+          filteredContributions = contributions.filter((contrib) => contrib.model === model);
+        } else if (q) {
+          filteredPosts = posts.filter((post) =>
             post.modelUsed?.toLowerCase().includes(q) ||
             post.promptUsed?.toLowerCase().includes(q) ||
             post.caption?.toLowerCase().includes(q) ||
             post.username?.toLowerCase().includes(q)
           );
-          console.log('Filtered posts:', filteredPosts);
-
-          const filteredContributions = contributions.filter((contrib) =>
+          filteredContributions = contributions.filter((contrib) =>
             contrib.model?.toLowerCase().includes(q) ||
             contrib.prompt?.toLowerCase().includes(q) ||
             contrib.username?.toLowerCase().includes(q)
           );
-          console.log('Filtered contributions:', filteredContributions);
+        }
 
-          setFilteredResults({ users: filteredUsers, posts: filteredPosts, contributions: filteredContributions });
-        };
-        filterData();
+        setFilteredResults({ users: filteredUsers, posts: filteredPosts, contributions: filteredContributions });
       };
 
       return debounce(handleSearch, 300);
-    }, [users, posts, contributions, selectedCategories]),
-    [users, posts, contributions, selectedCategories]
+    }, [users, posts, contributions]),
+    [users, posts, contributions]
   );
 
   useEffect(() => {
-    console.log('useEffect triggered with selectedCategories:', selectedCategories);
-    debouncedSearch(searchQuery);
-    setFilteredResults(prev => {
-      const newResults = selectedCategories.length > 0 ? filterItemsByCategories(selectedCategories) : { posts: [], contributions: [] };
-      console.log('Setting filteredResults to:', newResults);
-      return { ...prev, ...newResults, users: [] };
-    });
-  }, [searchQuery, debouncedSearch, selectedCategories]);
+    debouncedSearch(searchQuery, selectedModel);
+  }, [searchQuery, selectedModel, debouncedSearch]);
 
-  const filterItemsByCategories = (selectedCats) => {
-    console.log('Filtering by categories:', selectedCats);
-    const selectedCategoryObjects = categories.filter((cat) => selectedCats.includes(cat.name));
-    let filteredPosts = [];
-    let filteredContributions = [];
-
-    selectedCategoryObjects.forEach((category) => {
-      let postsForCategory = [];
-      let contributionsForCategory = [];
-      if (category.type === 'model') {
-        postsForCategory = posts.filter((post) =>
-          post.modelUsed?.toLowerCase() === category.filter.toLowerCase()
-        );
-        contributionsForCategory = contributions.filter((contrib) =>
-          contrib.model?.toLowerCase() === category.filter.toLowerCase()
-        );
-      } else if (category.type === 'genre') {
-        postsForCategory = posts.filter((post) =>
-          post.promptUsed?.toLowerCase().includes(category.filter) ||
-          post.caption?.toLowerCase().includes(category.filter)
-        );
-        contributionsForCategory = contributions.filter((contrib) =>
-          contrib.prompt?.toLowerCase().includes(category.filter)
-        );
-      }
-      filteredPosts = [...filteredPosts, ...postsForCategory];
-      filteredContributions = [...filteredContributions, ...contributionsForCategory];
-    });
-
-    console.log('Filtered posts by category:', filteredPosts);
-    console.log('Filtered contributions by category:', filteredContributions);
-
-    return {
-      posts: [...new Set(filteredPosts.map((post) => JSON.stringify(post)))].map((post) => JSON.parse(post)),
-      contributions: [...new Set(filteredContributions.map((contrib) => JSON.stringify(contrib)))].map((contrib) => JSON.parse(contrib))
-    };
-  };
-
-  const handleFilterByCategory = (category) => {
-    console.log('Category clicked:', category.name);
-    setSelectedCategories((prev) => {
-      const newSelected = prev.includes(category.name)
-        ? prev.filter((cat) => cat !== category.name)
-        : [...prev, category.name];
-      console.log('Updated selectedCategories:', newSelected);
-      return newSelected;
-    });
-    setSearchQuery('');
-  };
-
-  const resetFilters = () => {
-    console.log('Resetting filters');
-    setSearchQuery('');
-    setSelectedCategories([]);
-    setFilteredResults({ users: [], posts: [], contributions: [] });
-  };
-
-  const handleFollow = async (targetUserId) => {
-    if (!currentUser) {
-      alert('Please log in to follow users.');
-      return;
-    }
-
-    try {
-      const currentUserRef = doc(db, 'users', currentUser.uid);
-      const targetUserRef = doc(db, 'users', targetUserId);
-
-      // Note: Follow/unfollow logic requires write permissions
-    } catch (err) {
-      console.error('Failed to update follow status:', err.message);
+  const handleCardClick = (userId, postId) => {
+    if (currentUser) {
+      navigate(`/post/${userId}/${postId}`);
+    } else {
+      navigate('/login');
     }
   };
 
   if (loading) return <LoadingSpinner />;
 
   return (
-    <div style={{ minHeight: '100vh', backgroundColor: '#000000', padding: '2rem 1rem 2rem 250px' }}>
+    <div
+      style={{
+        minHeight: '100vh',
+        backgroundColor: '#000000',
+        padding: '2rem 1rem 2rem 250px',
+        display: 'flex',
+        flexDirection: 'column',
+        alignItems: 'center'
+      }}
+    >
+      <motion.img
+        src="/logo_white_new.png"
+        alt="Company Logo"
+        initial={{ y:-20, opacity: 0 }}
+        animate={{ y: 0, opacity: 1 }}
+        transition={{ duration: 0.8 }}
+        style={{ width: '100px', marginBottom: '2rem' }}
+      />
       <SearchGenresModelsContributions
         searchQuery={searchQuery}
         setSearchQuery={setSearchQuery}
         filteredUsers={filteredResults.users}
+        selectedModel={selectedModel}
+        setSelectedModel={setSelectedModel}
+        models={models}
+        style={{
+          '--search-input-width': '740px',
+          '--username-font-size': '1.2rem',
+          '--username-padding': '10px',
+          marginBottom: '0',
+          position: 'relative',
+          top: 0,
+          width: '100%',
+          maxWidth: '80rem'
+        }}
       />
-      {searchQuery && (
-        <SearchPosts
-          filteredPosts={filteredResults.posts}
-          filteredContributions={filteredResults.contributions}
-        />
-      )}
-      <ModelButtonCategories
-        categories={categories}
-        selectedCategories={selectedCategories}
-        handleFilterByCategory={handleFilterByCategory}
-        resetFilters={resetFilters}
-      />
+      <motion.section
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ duration: 1 }}
+        style={{ width: '100%', marginTop: '0', textAlign: 'center', minHeight: 'calc(100vh - 180px)' }}
+      >
+        <Masonry
+          breakpointCols={{ default: 5, 1100: 2, 700: 1 }}
+          className="my-masonry-grid"
+          columnClassName="my-masonry-grid_column"
+          style={{
+            margin: '0',
+            width: '100%',
+            display: 'flex',
+            flexDirection: 'row',
+            justifyContent: 'center'
+          }}
+          direction="rtl"
+        >
+          {(selectedModel || searchQuery ? filteredResults.posts : posts).map((post) => (
+            <motion.div
+              key={post.id}
+              initial={{ opacity: 0, x: 20 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ duration: 0.5 }}
+              style={{ marginRight: '20px', marginBottom: '0' }}
+            >
+              <Card
+                post={post}
+                userId={post.userId}
+                aspectRatio="1:1"
+                onClick={() => handleCardClick(post.userId, post.id)}
+              />
+            </motion.div>
+          ))}
+        </Masonry>
+      </motion.section>
     </div>
   );
 };

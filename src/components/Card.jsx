@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { FaHeart, FaRegHeart, FaBookmark } from 'react-icons/fa';
 import { db } from '../firebase/firebase';
@@ -7,7 +7,7 @@ import { auth } from '../firebase/firebase';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
 
-const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
+const Card = ({ post, userId, onClick }) => {
   const navigate = useNavigate();
   const [isHovered, setIsHovered] = useState(false);
   const [isLiked, setIsLiked] = useState(false);
@@ -15,6 +15,8 @@ const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
   const [mediaError, setMediaError] = useState(false);
   const [likes, setLikes] = useState((post?.likedBy || []).length);
   const [user, setUser] = useState(null);
+  const [aspectRatio, setAspectRatio] = useState(1); // Default to 1:1 until media loads
+  const mediaRef = useRef(null);
 
   // Robust isVideo check
   const isVideo = post && post.aiGeneratedUrl && (() => {
@@ -51,34 +53,32 @@ const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
     return () => unsubscribe();
   }, [post?.likedBy, post?.id]);
 
-  // Log video URL and check accessibility
+  // Log video URL and check accessibility, determine aspect ratio
   useEffect(() => {
-    console.log('Card - Processing post:', post);
-    if (!post || !post.aiGeneratedUrl) {
-      console.log('Card - Post or aiGeneratedUrl is missing:', { post });
+    const img = new Image();
+    img.src = post?.aiGeneratedUrl;
+
+    const handleLoad = () => {
+      const width = img.width;
+      const height = img.height;
+      const ratio = width / height;
+      setAspectRatio(ratio);
+      console.log(`Card - Loaded media dimensions: ${width}x${height}, Aspect Ratio: ${ratio}`);
+    };
+
+    const handleError = () => {
+      console.error('Card - Error loading media dimensions:', post.aiGeneratedUrl);
       setMediaError(true);
-    } else if (post.aiGeneratedUrl.startsWith('gs://')) {
-      console.error('Card - Invalid URL format: aiGeneratedUrl should be an HTTP URL, not a gs:// URI:', post.aiGeneratedUrl);
-      setMediaError(true);
-    } else if (isVideo) {
-      console.log('Card - Video URL:', post.aiGeneratedUrl);
-      fetch(post.aiGeneratedUrl, { method: 'HEAD' })
-        .then(response => {
-          if (response.ok) {
-            console.log('Card - Video URL is accessible:', post.aiGeneratedUrl);
-          } else {
-            console.error('Card - Video URL is not accessible:', response.status, response.statusText);
-            setMediaError(true);
-          }
-        })
-        .catch(err => {
-          console.error('Card - Error checking video URL accessibility:', err);
-          setMediaError(true);
-        });
-    } else {
-      console.log('Card - Not a video, treating as image:', post.aiGeneratedUrl);
-    }
-  }, [post?.aiGeneratedUrl, isVideo]);
+    };
+
+    img.addEventListener('load', handleLoad);
+    img.addEventListener('error', handleError);
+
+    return () => {
+      img.removeEventListener('load', handleLoad);
+      img.removeEventListener('error', handleError);
+    };
+  }, [post?.aiGeneratedUrl]);
 
   const handleClick = (e) => {
     e.stopPropagation();
@@ -144,18 +144,8 @@ const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
     }
   };
 
-  // Calculate dimensions based on aspect ratio
-  const aspectRatios = {
-    "9:16": 9 / 16,
-    "1:1": 1,
-    "4:3": 4 / 3,
-    "3:4": 3 / 4,
-    "16:9": 16 / 9
-  };
-
-  const baseWidth = 250;
-  const ratio = aspectRatios[aspectRatio] || aspectRatios["1:1"];
-  const height = baseWidth / ratio;
+  const baseWidth = 250; // Match UserContributions card width
+  const height = baseWidth / aspectRatio;
 
   if (!post || !post.aiGeneratedUrl) {
     return (
@@ -185,7 +175,8 @@ const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
         overflow: 'hidden',
         boxShadow: '0 0 10px rgba(255, 255, 255, 0.1)',
         cursor: 'pointer',
-        backgroundColor: '#000000'
+        backgroundColor: '#000000',
+        breakInside: 'avoid' // Prevent column breaks within the card
       }}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
@@ -227,6 +218,7 @@ const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
         </div>
       ) : isVideo ? (
         <video
+          ref={mediaRef}
           autoPlay
           loop
           muted
@@ -234,6 +226,12 @@ const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
           crossOrigin="anonymous"
           preload="auto"
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          onLoadedMetadata={(e) => {
+            const video = e.target;
+            const ratio = video.videoWidth / video.videoHeight;
+            setAspectRatio(ratio);
+            console.log(`Card - Video loaded, Aspect Ratio: ${ratio}`);
+          }}
           onError={(e) => {
             console.error('Card - Video error:', e.nativeEvent);
             console.error('Card - Error details:', e.nativeEvent.message, e.nativeEvent.code);
@@ -245,9 +243,16 @@ const Card = ({ post, userId, aspectRatio = "1:1", onClick }) => {
         </video>
       ) : (
         <img
+          ref={mediaRef}
           src={post.aiGeneratedUrl}
           alt="Post"
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
+          onLoad={(e) => {
+            const img = e.target;
+            const ratio = img.naturalWidth / img.naturalHeight;
+            setAspectRatio(ratio);
+            console.log(`Card - Image loaded, Aspect Ratio: ${ratio}`);
+          }}
           onError={(e) => {
             console.error('Card - Image error:', e.nativeEvent);
             setMediaError(true);
