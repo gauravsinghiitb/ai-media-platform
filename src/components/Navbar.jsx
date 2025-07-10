@@ -1,14 +1,15 @@
 import React, { useState, useEffect } from 'react';
 import { Link, useNavigate, useLocation } from 'react-router-dom';
-import { auth } from '../firebase/firebase';
+import { auth, db } from '../firebase/firebase';
 import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { doc, getDoc } from 'firebase/firestore';
 import {
   FaHome,
   FaCompass,
   FaUpload,
-  FaUser,
   FaSignOutAlt,
   FaTh,
+  FaUser,
   FaLightbulb,
   FaBookmark,
   FaChevronRight,
@@ -20,16 +21,22 @@ const Navbar = () => {
   const navigate = useNavigate();
   const location = useLocation();
   const [user, setUser] = useState(null);
-  const [isMenuOpen, setIsMenuOpen] = useState(window.innerWidth >= 769);
+  const [profilePic, setProfilePic] = useState(null);
+  const [isExpanded, setIsExpanded] = useState(false);
+  const [hoverText, setHoverText] = useState('');
 
   useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (currentUser) => {
+    const unsubscribe = onAuthStateChanged(auth, async (currentUser) => {
       setUser(currentUser);
+      if (currentUser) {
+        const userDocRef = doc(db, 'users', currentUser.uid);
+        const userDoc = await getDoc(userDocRef);
+        if (userDoc.exists()) {
+          setProfilePic(userDoc.data().profilePic || null);
+        }
+      }
     });
-
-    const handleResize = () => setIsMenuOpen(window.innerWidth >= 769);
-    window.addEventListener('resize', handleResize);
-    return () => window.removeEventListener('resize', handleResize);
+    return () => unsubscribe();
   }, []);
 
   const handleLogout = async () => {
@@ -41,13 +48,6 @@ const Navbar = () => {
     }
   };
 
-  const toggleMenu = () => setIsMenuOpen(!isMenuOpen);
-
-  const navVariants = {
-    expanded: { width: '200px' },
-    collapsed: { width: '80px' },
-  };
-
   const navLinks = [
     { to: '/', icon: <FaHome />, label: 'Home' },
     { to: '/explore', icon: <FaCompass />, label: 'Explore' },
@@ -55,7 +55,7 @@ const Navbar = () => {
     { to: `/profile/${user?.uid}/posts`, icon: <FaTh />, label: 'Posts' },
     { to: `/profile/${user?.uid}/contributions`, icon: <FaLightbulb />, label: 'Contributions' },
     { to: `/profile/${user?.uid}/saved`, icon: <FaBookmark />, label: 'Saved Posts' },
-    { to: `/profile/${user?.uid}`, icon: <FaUser />, label: 'Profile' },
+    { to: `/profile/${user?.uid}`, icon: profilePic ? <img src={profilePic} alt="Profile" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} /> : <FaUser />, label: 'Profile' },
   ];
 
   return (
@@ -71,21 +71,31 @@ const Navbar = () => {
           nav {
             border-right: 3px solid transparent;
             animation: rotateBorder 2s linear infinite;
+            backdrop-filter: blur(10px);
+            -webkit-backdrop-filter: blur(10px);
+            background-color: rgba(0, 0, 0, 0.8);
           }
 
           .nav-item {
             transition: all 0.3s ease;
-            width: 100%;
+            padding: 0 8px;
+            position: relative;
           }
 
           .nav-item:hover {
-            background: rgba(255, 255, 255, 0.07);
-            transform: scale(1.03);
-            border-radius: 8px;
+            transform: scale(1.15);
+          }
+
+          .nav-item:hover .icon-wrapper {
+            box-shadow: 0 0 15px rgba(128, 128, 128, 0.5); /* Bigger circle */
+            border: 1px solid #808080; /* Very thin grey outline */
+            border-radius: 50%;
+            width: 30px; /* Bigger circle */
+            height: 30px; /* Bigger circle */
           }
 
           .active-icon {
-            font-size: 1.5rem;
+            font-size: 1.2rem;
             position: relative;
           }
 
@@ -93,111 +103,198 @@ const Navbar = () => {
             content: '';
             position: absolute;
             bottom: -4px;
-            left: 0;
-            width: 100%;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 3px;
             height: 3px;
-            background: linear-gradient(90deg, #00ffff, #ff00ff);
-            animation: rotateBorder 1.5s infinite linear;
-            border-radius: 2px;
+            background: #ffffff;
+            border-radius: 50%;
+          }
+
+          .hover-text {
+            position: absolute;
+            right: -100px;
+            top: 50%;
+            transform: translateY(-50%);
+            background-color: rgba(0, 0, 0, 0.9);
+            color: #fff;
+            padding: 6px 10px;
+            border: 1px solid #808080; /* Grey outline for text box */
+            border-radius: 4px;
+            font-size: 12px;
+            white-space: nowrap;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease;
+          }
+
+          .nav-item:hover .hover-text {
+            opacity: 1;
+          }
+
+          .icon-wrapper {
+            display: flex;
+            align-items: center;
+            justify-content: center; /* Center the icon */
+            width: 24px;
+            height: 24px;
+          }
+
+          .expanded {
+            align-items: flex-start;
+          }
+
+          .expanded .nav-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            width: 100%;
+          }
+
+          .expanded .icon-wrapper + .hover-text {
+            position: static;
+            opacity: 1;
+            padding: 0;
+            background: none; /* No box when expanded */
+            border: none; /* No outline when expanded */
+            margin-left: 8px;
           }
         `}
       </style>
       <motion.nav
-        variants={navVariants}
-        initial={isMenuOpen ? 'expanded' : 'collapsed'}
-        animate={isMenuOpen ? 'expanded' : 'collapsed'}
-        transition={{ duration: 0.3 }}
+        initial={{ x: -200 }}
+        animate={{ x: 0 }}
+        transition={{ duration: 0.5 }}
         style={{
-          background: '#000000',
-          padding: '16px 0',
+          backgroundColor: 'rgba(0, 0, 0, 0.8)',
+          padding: '4px 0',
           position: 'fixed',
           top: 0,
           left: 0,
           height: '100vh',
           zIndex: 1000,
-          overflow: 'hidden',
-          cursor: 'pointer',
           display: 'flex',
           flexDirection: 'column',
-          borderTopRightRadius: '16px',
-          borderBottomRightRadius: '16px',
+          alignItems: 'center',
+          justifyContent: 'flex-start',
+          borderTopRightRadius: '0',
+          borderBottomRightRadius: '0',
+          width: isExpanded ? '200px' : '60px',
         }}
       >
-        <div style={{ padding: '16px', display: 'flex', flexDirection: 'column', alignItems: 'flex-start' }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-            <img src="/logo_white_new.png" alt="Logo" style={{ width: '30px', height: '30px' }} />
-            {isMenuOpen && <div style={{ color: '#fff', fontWeight: 'bold', fontSize: '18px' }}>Kryoon</div>}
-          </div>
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '16px', marginTop: '20px', width: '100%' }}>
+          <Link to="/explore" style={{ display: 'flex', alignItems: 'center', gap: '8px', marginLeft: isExpanded ? '8px' : 0 }}>
+            <img src="/logo_white_new.png" alt="Logo" style={{ width: '20px', height: '20px' }} />
+            {isExpanded && <span style={{ color: '#fff', fontWeight: 'bold', fontSize: '16px' }}>Kryoon</span>}
+          </Link>
+
           <button
-            onClick={toggleMenu}
+            onClick={() => setIsExpanded(!isExpanded)}
             style={{
               color: '#ffffff',
               background: 'none',
               border: 'none',
               cursor: 'pointer',
-              marginTop: '1rem',
+              padding: '4px',
+              fontSize: '1.2rem',
+              alignSelf: 'flex-start',
+              marginLeft: '8px',
             }}
           >
-            {isMenuOpen ? <FaChevronLeft size={20} /> : <FaChevronRight size={20} />}
+            {isExpanded ? <FaChevronLeft /> : <FaChevronRight />}
           </button>
-        </div>
 
-        <div
-          style={{
-            display: 'flex',
-            flexDirection: 'column',
-            alignItems: 'flex-start',
-            paddingLeft: '16px',
-            paddingRight: '16px',
-            gap: '16px',
-            marginTop: '32px',
-            width: '100%',
-          }}
-        >
-          {navLinks.map(({ to, icon, label }) => {
-            const isActive = location.pathname === to;
-            return (
-              <div key={label} className="nav-item">
-                <Link
-                  to={to}
-                  title={!isMenuOpen ? label : undefined}
-                  style={{
-                    color: '#ffffff',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'flex-start',
-                    padding: '8px',
-                    textDecoration: 'none',
-                    width: '100%',
-                    fontWeight: 500,
-                  }}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: isExpanded ? 'flex-start' : 'center', gap: '12px', marginTop: '40px', flexGrow: 1, width: '100%', paddingLeft: isExpanded ? '8px' : 0 }}>
+            {navLinks.slice(0, -2).map(({ to, icon, label }) => {
+              const isActive = location.pathname === to;
+              return (
+                <div
+                  key={to}
+                  className={`nav-item ${isExpanded ? 'expanded' : ''}`}
+                  onMouseEnter={() => !isExpanded && setHoverText(label)}
+                  onMouseLeave={() => !isExpanded && setHoverText('')}
                 >
-                  <span className={isActive ? 'active-icon' : ''} style={{ marginRight: isMenuOpen ? '8px' : 0 }}>{icon}</span>
-                  {isMenuOpen && label}
-                </Link>
-              </div>
-            );
-          })}
+                  <Link
+                    to={to}
+                    style={{
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: isExpanded ? 'flex-start' : 'center',
+                      padding: '3px',
+                      textDecoration: 'none',
+                      width: '100%',
+                    }}
+                  >
+                    <div className="icon-wrapper">
+                      <span className={isActive ? 'active-icon' : ''} style={{ fontSize: '1.2rem' }}>{icon}</span>
+                    </div>
+                    {isExpanded && <span className="hover-text">{label}</span>}
+                    {!isExpanded && <div className="hover-text">{hoverText}</div>}
+                  </Link>
+                </div>
+              );
+            })}
+          </div>
 
-          <div className="nav-item">
-            <button
-              onClick={handleLogout}
-              title={!isMenuOpen ? 'Logout' : undefined}
-              style={{
-                color: '#ffffff',
-                background: 'none',
-                padding: '8px',
-                border: 'none',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'flex-start',
-                width: '100%',
-              }}
+          <div style={{ display: 'flex', flexDirection: 'column', alignItems: isExpanded ? 'flex-start' : 'center', gap: '12px', marginTop: 'auto', width: '100%', paddingLeft: isExpanded ? '8px' : 0 }}>
+            {navLinks.slice(-2).map(({ to, icon, label }) => {
+              const isActive = location.pathname === to;
+              return (
+                <div
+                  key={to}
+                  className={`nav-item ${isExpanded ? 'expanded' : ''}`}
+                  onMouseEnter={() => !isExpanded && setHoverText(label)}
+                  onMouseLeave={() => !isExpanded && setHoverText('')}
+                >
+                  <Link
+                    to={to}
+                    style={{
+                      color: '#ffffff',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: isExpanded ? 'flex-start' : 'center',
+                      padding: '3px',
+                      textDecoration: 'none',
+                      width: '100%',
+                    }}
+                  >
+                    <div className="icon-wrapper">
+                      <span className={isActive ? 'active-icon' : ''} style={{ fontSize: '1.2rem' }}>{icon}</span>
+                    </div>
+                    {isExpanded && <span className="hover-text">{label}</span>}
+                    {!isExpanded && <div className="hover-text">{hoverText}</div>}
+                  </Link>
+                </div>
+              );
+            })}
+
+            <div
+              className={`nav-item ${isExpanded ? 'expanded' : ''}`}
+              onMouseEnter={() => !isExpanded && setHoverText('Logout')}
+              onMouseLeave={() => !isExpanded && setHoverText('')}
             >
-              <FaSignOutAlt style={{ marginRight: isMenuOpen ? '8px' : 0 }} />
-              {isMenuOpen && 'Logout'}
-            </button>
+              <button
+                onClick={handleLogout}
+                style={{
+                  color: '#ffffff',
+                  background: 'none',
+                  padding: '3px',
+                  border: 'none',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: isExpanded ? 'flex-start' : 'center',
+                  width: '100%',
+                }}
+              >
+                <div className="icon-wrapper">
+                  <FaSignOutAlt style={{ fontSize: '1.2rem' }} />
+                </div>
+                {isExpanded && <span className="hover-text">Logout</span>}
+                {!isExpanded && <div className="hover-text">{hoverText}</div>}
+              </button>
+            </div>
           </div>
         </div>
       </motion.nav>
