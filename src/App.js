@@ -16,6 +16,7 @@ import EditProfile from './pages/EditProfile';
 import UserPosts from './pages/UserPosts';
 import UserContributions from './pages/UserContributions';
 import UserSavedPosts from './pages/UserSavedPosts';
+import Video from './pages/Video';
 // import Layout from './components/Layout';
 
 
@@ -40,6 +41,7 @@ const App = () => {
   <Route path="/profile/:userId/posts" element={<UserPosts />} />
   <Route path="/profile/:userId/contributions" element={<UserContributions/>} />
   <Route path="/profile/:userId/saved" element={<UserSavedPosts />} />
+  <Route path="/video" element={<Video />} />
 </Routes>
       </div>
     </Router>

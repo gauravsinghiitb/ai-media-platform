@@ -13,7 +13,8 @@ import {
   FaLightbulb,
   FaBookmark,
   FaChevronRight,
-  FaChevronLeft
+  FaChevronLeft,
+  FaFilm
 } from 'react-icons/fa';
 import { motion } from 'framer-motion';
 
@@ -55,6 +56,7 @@ const Navbar = () => {
     { to: `/profile/${user?.uid}/posts`, icon: <FaTh />, label: 'Posts' },
     { to: `/profile/${user?.uid}/contributions`, icon: <FaLightbulb />, label: 'Contributions' },
     { to: `/profile/${user?.uid}/saved`, icon: <FaBookmark />, label: 'Saved Posts' },
+    { to: '/video', icon: <FaFilm />, label: 'Reels' },
     { to: `/profile/${user?.uid}`, icon: profilePic ? <img src={profilePic} alt="Profile" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} /> : <FaUser />, label: 'Profile' },
   ];
 
@@ -87,11 +89,11 @@ const Navbar = () => {
           }
 
           .nav-item:hover .icon-wrapper {
-            box-shadow: 0 0 15px rgba(128, 128, 128, 0.5); /* Bigger circle */
-            border: 1px solid #808080; /* Very thin grey outline */
+            box-shadow: 0 0 15px rgba(128, 128, 128, 0.5);
+            border: 1px solid #808080;
             border-radius: 50%;
-            width: 30px; /* Bigger circle */
-            height: 30px; /* Bigger circle */
+            width: 30px;
+            height: 30px;
           }
 
           .active-icon {
@@ -119,7 +121,7 @@ const Navbar = () => {
             background-color: rgba(0, 0, 0, 0.9);
             color: #fff;
             padding: 6px 10px;
-            border: 1px solid #808080; /* Grey outline for text box */
+            border: 1px solid #808080;
             border-radius: 4px;
             font-size: 12px;
             white-space: nowrap;
@@ -135,7 +137,7 @@ const Navbar = () => {
           .icon-wrapper {
             display: flex;
             align-items: center;
-            justify-content: center; /* Center the icon */
+            justify-content: center;
             width: 24px;
             height: 24px;
           }
@@ -155,8 +157,8 @@ const Navbar = () => {
             position: static;
             opacity: 1;
             padding: 0;
-            background: none; /* No box when expanded */
-            border: none; /* No outline when expanded */
+            background: none;
+            border: none;
             margin-left: 8px;
           }
         `}

@@ -15,7 +15,7 @@ const Card = ({ post, userId, onClick }) => {
   const [mediaError, setMediaError] = useState(false);
   const [likes, setLikes] = useState((post?.likedBy || []).length);
   const [user, setUser] = useState(null);
-  const [aspectRatio, setAspectRatio] = useState(1); // Default to 1:1 until media loads
+  const [aspectRatio, setAspectRatio] = useState(1); // Default to 1:1
   const mediaRef = useRef(null);
 
   // Robust isVideo check
@@ -53,32 +53,36 @@ const Card = ({ post, userId, onClick }) => {
     return () => unsubscribe();
   }, [post?.likedBy, post?.id]);
 
-  // Log video URL and check accessibility, determine aspect ratio
+  // Handle media dimensions and playback
   useEffect(() => {
-    const img = new Image();
-    img.src = post?.aiGeneratedUrl;
+    const media = mediaRef.current;
+    if (media && !mediaError) {
+      const handleMetadata = () => {
+        if (isVideo && media.videoWidth && media.videoHeight) {
+          const ratio = media.videoWidth / media.videoHeight;
+          setAspectRatio(ratio);
+          console.log(`Card - Video loaded, Aspect Ratio: ${ratio}`);
+        } else if (!isVideo && media.naturalWidth && media.naturalHeight) {
+          const ratio = media.naturalWidth / media.naturalHeight;
+          setAspectRatio(ratio);
+          console.log(`Card - Image loaded, Aspect Ratio: ${ratio}`);
+        }
+      };
 
-    const handleLoad = () => {
-      const width = img.width;
-      const height = img.height;
-      const ratio = width / height;
-      setAspectRatio(ratio);
-      console.log(`Card - Loaded media dimensions: ${width}x${height}, Aspect Ratio: ${ratio}`);
-    };
+      const handleError = (e) => {
+        console.error('Card - Media error:', e.nativeEvent);
+        setMediaError(true);
+      };
 
-    const handleError = () => {
-      console.error('Card - Error loading media dimensions:', post.aiGeneratedUrl);
-      setMediaError(true);
-    };
+      media.addEventListener('loadedmetadata', handleMetadata);
+      media.addEventListener('error', handleError);
 
-    img.addEventListener('load', handleLoad);
-    img.addEventListener('error', handleError);
-
-    return () => {
-      img.removeEventListener('load', handleLoad);
-      img.removeEventListener('error', handleError);
-    };
-  }, [post?.aiGeneratedUrl]);
+      return () => {
+        media.removeEventListener('loadedmetadata', handleMetadata);
+        media.removeEventListener('error', handleError);
+      };
+    }
+  }, [post?.aiGeneratedUrl, isVideo, mediaError]);
 
   const handleClick = (e) => {
     e.stopPropagation();
@@ -144,7 +148,7 @@ const Card = ({ post, userId, onClick }) => {
     }
   };
 
-  const baseWidth = 250; // Match UserContributions card width
+  const baseWidth = 250;
   const height = baseWidth / aspectRatio;
 
   if (!post || !post.aiGeneratedUrl) {
@@ -176,7 +180,7 @@ const Card = ({ post, userId, onClick }) => {
         boxShadow: '0 0 10px rgba(255, 255, 255, 0.1)',
         cursor: 'pointer',
         backgroundColor: '#000000',
-        breakInside: 'avoid' // Prevent column breaks within the card
+        breakInside: 'avoid'
       }}
       whileHover={{ scale: 1.05 }}
       whileTap={{ scale: 0.95 }}
@@ -202,6 +206,10 @@ const Card = ({ post, userId, onClick }) => {
             onClick={(e) => {
               e.stopPropagation();
               setMediaError(false);
+              // Optionally reload the media
+              if (mediaRef.current) {
+                mediaRef.current.load();
+              }
             }}
             style={{
               backgroundColor: '#FFFFFF',
@@ -219,26 +227,19 @@ const Card = ({ post, userId, onClick }) => {
       ) : isVideo ? (
         <video
           ref={mediaRef}
+          src={post.aiGeneratedUrl}
           autoPlay
-          loop
+          loop // Ensure video loops continuously
           muted
           playsInline
           crossOrigin="anonymous"
           preload="auto"
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onLoadedMetadata={(e) => {
-            const video = e.target;
-            const ratio = video.videoWidth / video.videoHeight;
-            setAspectRatio(ratio);
-            console.log(`Card - Video loaded, Aspect Ratio: ${ratio}`);
-          }}
           onError={(e) => {
             console.error('Card - Video error:', e.nativeEvent);
-            console.error('Card - Error details:', e.nativeEvent.message, e.nativeEvent.code);
             setMediaError(true);
           }}
         >
-          <source src={post.aiGeneratedUrl} type={`video/${post.aiGeneratedUrl.split('.').pop().split('?')[0]}`} />
           Your browser does not support the video tag.
         </video>
       ) : (
@@ -247,12 +248,6 @@ const Card = ({ post, userId, onClick }) => {
           src={post.aiGeneratedUrl}
           alt="Post"
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onLoad={(e) => {
-            const img = e.target;
-            const ratio = img.naturalWidth / img.naturalHeight;
-            setAspectRatio(ratio);
-            console.log(`Card - Image loaded, Aspect Ratio: ${ratio}`);
-          }}
           onError={(e) => {
             console.error('Card - Image error:', e.nativeEvent);
             setMediaError(true);
@@ -269,7 +264,6 @@ const Card = ({ post, userId, onClick }) => {
             right: '0',
             bottom: '0',
             display: 'flex',
-            flexDirection: 'column',
             justifyContent: 'space-between',
             padding: '8px',
             transition: 'opacity 0.2s ease',
@@ -281,8 +275,29 @@ const Card = ({ post, userId, onClick }) => {
         >
           <div style={{ 
             display: 'flex', 
-            justifyContent: 'flex-end', 
-            alignItems: 'center' 
+            flexDirection: 'column', 
+            justifyContent: 'flex-end',
+            gap: '4px'
+          }}>
+            <p style={{ 
+              color: '#FFFFFF',
+              fontSize: '14px',
+              fontWeight: '600'
+            }}>
+              @{post.username || 'user'} {/* Use database username */}
+            </p>
+            <p style={{ 
+              color: '#FFFFFF',
+              fontSize: '12px'
+            }}>
+              {post.modelUsed || 'Unknown'}
+            </p>
+          </div>
+          <div style={{ 
+            display: 'flex', 
+            flexDirection: 'column', 
+            justifyContent: 'space-between',
+            alignItems: 'flex-end'
           }}>
             <motion.button
               onClick={handleSave}
@@ -295,51 +310,23 @@ const Card = ({ post, userId, onClick }) => {
               }}
               whileHover={{ scale: 1.2 }}
             >
-              <FaBookmark />
+              {isSaved ? <FaBookmark /> : <FaBookmark />}
             </motion.button>
-          </div>
-
-          <div style={{ 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: '4px' 
-          }}>
-            <p style={{ 
-              color: '#FFFFFF',
-              fontSize: '14px',
-              height: '0px',
-              fontWeight: '600' 
-            }}>
-              {post.modelUsed || 'Unknown'}
-            </p>
-            <div style={{
-              display: 'flex',
-              justifyContent: 'space-between',
-              alignItems: 'center'
-            }}>
-              <p style={{ 
+            <motion.button
+              onClick={handleLike}
+              style={{ 
                 color: '#FFFFFF',
-                fontSize: '12px',
-                height: '5px'
-              }}>
-                @{post.username || 'user'}
-              </p>
-              <motion.button
-                onClick={handleLike}
-                style={{ 
-                  color: '#FFFFFF',
-                  fontSize: '14px', 
-                  background: 'none', 
-                  border: 'none',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '5px'
-                }}
-                whileHover={{ scale: 1.2 }}
-              >
-                {isLiked ? <FaHeart /> : <FaRegHeart />} {likes}
-              </motion.button>
-            </div>
+                fontSize: '14px', 
+                background: 'none', 
+                border: 'none',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '5px'
+              }}
+              whileHover={{ scale: 1.2 }}
+            >
+              {isLiked ? <FaHeart /> : <FaRegHeart />} {likes}
+            </motion.button>
           </div>
         </motion.div>
       )}
