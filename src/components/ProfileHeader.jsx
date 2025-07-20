@@ -5,6 +5,7 @@ import { doc, updateDoc, arrayUnion, arrayRemove, getDoc } from 'firebase/firest
 import { db } from '../firebase/firebase';
 import { FaCog, FaLink, FaMapMarkerAlt, FaTwitter, FaLinkedin, FaInstagram, FaGithub, FaFacebook, FaCalendarAlt, FaTrophy } from 'react-icons/fa';
 import Settings from '../components/Settings';
+import { LazyImage } from './LazyLoad';
 
 const ProfileHeader = ({
   userData,
@@ -101,7 +102,7 @@ const ProfileHeader = ({
         margin: '0 auto',
       }}>
         {/* Profile Picture */}
-        <img
+        <LazyImage
           src={userData.profilePic || 'https://dummyimage.com/200x200/000/fff?text=Profile'}
           alt="Profile"
           style={{
@@ -113,9 +114,8 @@ const ProfileHeader = ({
             boxShadow: '0 0 10px #FFFFFF',
             cursor: 'pointer',
           }}
-          onClick={() => setIsProfilePicPopupOpen(true)}
-          onError={(e) => {
-            e.target.src = 'https://dummyimage.com/200x200/000/fff?text=Profile';
+          onError={() => {
+            // Error handling is built into LazyImage
           }}
         />
 

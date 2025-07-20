@@ -7,6 +7,7 @@ import LoadingSpinner from '../components/LoadingSpinner';
 import Card from '../components/Card';
 import Masonry from 'react-masonry-css';
 import { motion } from 'framer-motion';
+import { LazyImage } from '../components/LazyLoad';
 
 const Feed = () => {
   const navigate = useNavigate();
@@ -68,10 +69,14 @@ const Feed = () => {
 
   // Masonry layout breakpoints
   const breakpointColumnsObj = {
-    default: 4,
-    1100: 3,
-    700: 2,
-    500: 1
+    default: 6,
+    1800: 5,
+    1600: 6,
+    1400: 5,
+    1200: 4,
+    1000: 3,
+    800: 2,
+    600: 1
   };
 
   // Animation variants for cards

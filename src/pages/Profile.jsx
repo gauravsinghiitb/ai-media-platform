@@ -9,6 +9,8 @@ import ContributionCard from '../components/ContributionCard';
 import ContributionDetail from '../components/ContributionDetail';
 import ProfileHeader from '../components/ProfileHeader';
 import { FaLink, FaTh, FaLightbulb, FaBookmark } from 'react-icons/fa';
+import { LazyImage } from '../components/LazyLoad';
+import Masonry from 'react-masonry-css';
 
 const Profile = () => {
   const { userId } = useParams();
@@ -451,7 +453,12 @@ const Profile = () => {
   );
 
   return (
-    <div style={{ backgroundColor: '#000000', minHeight: '100vh', color: '#FFFFFF', padding: '30px 15px' }}>
+    <div style={{ 
+      backgroundColor: '#000000', 
+      minHeight: '100vh', 
+      color: '#FFFFFF', 
+      padding: '30px 15px 30px 265px'
+    }}>
       <ProfileHeader
         userData={{ ...userData, contributionCount }}
         currentUser={currentUser}
@@ -582,12 +589,24 @@ const Profile = () => {
       </div>
 
       <div style={{
-        columnCount: 5,
-        columnGap: '10px',
         maxWidth: '1400px',
         margin: '0 auto',
         padding: '0 10px',
       }}>
+        <Masonry
+          breakpointCols={{
+            default: 4,
+            1800: 5,
+            1600: 6,
+            1400: 5,
+            1200: 4,
+            1000: 3,
+            800: 2,
+            600: 1
+          }}
+          className="masonry-grid"
+          columnClassName="masonry-grid-column"
+        >
         {itemsToDisplay.length > 0 ? (
           itemsToDisplay.map((item, index) => {
             if (view === 'contributions') {
@@ -662,6 +681,7 @@ const Profile = () => {
             {view === 'myPosts' ? 'No posts yet' : view === 'contributions' ? 'No contributions yet' : 'No saved posts'}
           </div>
         )}
+        </Masonry>
       </div>
 
       {selectedContribution && (
@@ -923,6 +943,19 @@ const Profile = () => {
           onClick={() => setShowLinksPopup(false)}
         />
       )}
+      
+      <style>{`
+        .masonry-grid {
+          display: flex;
+          width: auto;
+        }
+        .masonry-grid-column {
+          background-clip: padding-box;
+        }
+        .masonry-grid-column > div {
+          margin-bottom: 16px;
+        }
+      `}</style>
     </div>
   );
 };

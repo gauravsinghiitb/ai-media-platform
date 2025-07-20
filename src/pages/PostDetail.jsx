@@ -5,8 +5,9 @@ import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { auth } from '../firebase/firebase';
 import { onAuthStateChanged } from 'firebase/auth';
 import { ref, getDownloadURL } from 'firebase/storage';
-import { FaHeart, FaRegHeart, FaPlay, FaBookmark, FaRegBookmark, FaShareAlt, FaRegComment, FaReply, FaCopy } from 'react-icons/fa';
+import { FaHeart, FaRegHeart, FaPlay, FaBookmark, FaRegBookmark, FaShareAlt, FaRegComment, FaReply, FaCopy, FaUser, FaClock, FaEye, FaTags } from 'react-icons/fa';
 import { motion } from 'framer-motion';
+import RecommendedPosts from '../components/RecommendedPosts';
 
 const PostDetail = () => {
   const { userId, postId } = useParams();
@@ -16,6 +17,8 @@ const PostDetail = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
   const [comment, setComment] = useState('');
+  const [replyComment, setReplyComment] = useState('');
+  const [replyingTo, setReplyingTo] = useState(null);
   const [isLiked, setIsLiked] = useState(false);
   const [isSaved, setIsSaved] = useState(false);
   const [mediaError, setMediaError] = useState(false);
@@ -23,24 +26,17 @@ const PostDetail = () => {
   const [userProfilePic, setUserProfilePic] = useState(null);
   const [showShareModal, setShowShareModal] = useState(false);
   const [showOriginalModal, setShowOriginalModal] = useState(false);
-  const [showComments, setShowComments] = useState(false);
+  const [showComments, setShowComments] = useState(true);
   const [showFullPrompt, setShowFullPrompt] = useState(false);
   const videoRef = useRef(null);
   const commentInputRef = useRef(null);
+  const replyInputRef = useRef(null);
 
   console.log('PostDetail - userId from URL:', userId);
   console.log('PostDetail - postId from URL:', postId);
 
   const profanityList = [
-    'nigga',
-    'ass',
-    'bitch',
-    'shit',
-    'fuck',
-    'bastard',
-    'cunt',
-    'dick',
-    'piss'
+    'nigga', 'ass', 'bitch', 'shit', 'fuck', 'bastard', 'cunt', 'dick', 'piss'
   ];
 
   const isVideo = useMemo(() => {
@@ -62,7 +58,6 @@ const PostDetail = () => {
 
         console.log(`Fetching post document for postId: ${postId}`);
 
-        // Fetch the post document from the posts collection
         const postDocRef = doc(db, 'posts', postId);
         const postDoc = await getDoc(postDocRef);
         if (!postDoc.exists()) {
@@ -72,12 +67,11 @@ const PostDetail = () => {
         let postData = postDoc.data();
         console.log('PostDetail - Fetched post data:', postData);
 
-        // Verify the post belongs to the user
         if (postData.userId !== userId) {
           throw new Error('Post does not belong to this user');
         }
 
-        // Resolve aiGeneratedUrl if it's a storage path
+        // Resolve URLs
         let resolvedAiGeneratedUrl = postData.aiGeneratedUrl;
         if (resolvedAiGeneratedUrl && !resolvedAiGeneratedUrl.startsWith('https://')) {
           try {
@@ -91,7 +85,6 @@ const PostDetail = () => {
         }
         postData = { ...postData, aiGeneratedUrl: resolvedAiGeneratedUrl };
 
-        // Resolve originalUrl if present and it's a storage path
         let resolvedOriginalUrl = postData.originalUrl;
         if (resolvedOriginalUrl && !resolvedOriginalUrl.startsWith('https://')) {
           try {
@@ -105,7 +98,7 @@ const PostDetail = () => {
         }
         postData = { ...postData, originalUrl: resolvedOriginalUrl };
 
-        // Fetch the user document
+        // Fetch user data
         console.log(`Fetching user document for userId: ${userId}`);
         const userDocRef = doc(db, 'users', userId);
         const userDoc = await getDoc(userDocRef);
@@ -121,9 +114,8 @@ const PostDetail = () => {
         });
 
         setUserProfilePic(userData.profilePic || 'https://via.placeholder.com/30?text=User');
-        setPost({ ...postData, username: userData.username?.username || 'user' }); // Fixed: Extract the username string
+        setPost({ ...postData, username: userData.username?.username || 'user', id: postId });
 
-        // Check if the current user has liked the post
         if (user && postData.likedBy && postData.likedBy.includes(user.uid)) {
           setIsLiked(true);
         }
@@ -131,19 +123,13 @@ const PostDetail = () => {
         console.error('PostDetail - Error fetching post:', err);
         if (err.code === 'permission-denied') {
           setError('You do not have permission to view this post.');
-          setTimeout(() => {
-            navigate('/');
-          }, 3000);
+          setTimeout(() => navigate('/'), 3000);
         } else if (err.message === 'Post not found' || err.message === 'Post does not belong to this user') {
           setError('The post you are trying to access does not exist.');
-          setTimeout(() => {
-            navigate(`/profile/${userId}`);
-          }, 3000);
+          setTimeout(() => navigate(`/profile/${userId}`), 3000);
         } else if (err.message === 'User not found') {
           setError('The user does not exist.');
-          setTimeout(() => {
-            navigate('/');
-          }, 3000);
+          setTimeout(() => navigate('/'), 3000);
         } else {
           setError(`Failed to load post: ${err.message}`);
         }
@@ -162,9 +148,6 @@ const PostDetail = () => {
           }
         } catch (err) {
           console.error('PostDetail - Error checking saved status:', err);
-          if (err.code === 'permission-denied') {
-            console.warn('PostDetail - Permission denied when checking saved status');
-          }
         }
       }
     };
@@ -188,8 +171,8 @@ const PostDetail = () => {
   }, [userId, postId, user, navigate]);
 
   useEffect(() => {
-    if (isVideo) {
-      console.log('PostDetail - Video URL:', post?.aiGeneratedUrl);
+    if (isVideo && post?.aiGeneratedUrl) {
+      console.log('PostDetail - Video URL:', post.aiGeneratedUrl);
       fetch(post.aiGeneratedUrl, { method: 'HEAD' })
         .then(response => {
           if (response.ok) {
@@ -293,7 +276,8 @@ const PostDetail = () => {
       return;
     }
 
-    if (!comment.trim()) {
+    const commentText = parentCommentId !== null ? replyComment : comment;
+    if (!commentText.trim()) {
       return;
     }
 
@@ -303,17 +287,17 @@ const PostDetail = () => {
       const commenterDoc = await getDoc(commenterDocRef);
       const commenterData = commenterDoc.exists() ? commenterDoc.data() : {};
       const newComment = {
-        username: commenterData.username?.username || 'Anonymous', // Adjusted for nested username object
+        username: commenterData.username?.username || 'Anonymous',
         userId: user.uid,
         profilePic: commenterData.profilePic || 'https://via.placeholder.com/30?text=User',
-        comment: filterProfanity(comment.trim()),
+        comment: filterProfanity(commentText.trim()),
         timestamp: new Date().toISOString(),
         likes: [],
         replies: [],
       };
 
       let updatedComments = post.comments || [];
-      if (parentCommentId) {
+      if (parentCommentId !== null) {
         updatedComments = updatedComments.map((c, index) => {
           if (index === parseInt(parentCommentId)) {
             const updatedReplies = c.replies ? [...c.replies, newComment] : [newComment];
@@ -321,8 +305,11 @@ const PostDetail = () => {
           }
           return c;
         });
+        setReplyComment('');
+        setReplyingTo(null);
       } else {
         updatedComments = [...updatedComments, newComment];
+        setComment('');
       }
 
       await updateDoc(postDocRef, { comments: updatedComments });
@@ -330,7 +317,6 @@ const PostDetail = () => {
         ...prev,
         comments: updatedComments,
       }));
-      setComment('');
     } catch (err) {
       console.error('PostDetail - Error adding comment:', err);
       if (err.code === 'permission-denied') {
@@ -434,7 +420,7 @@ const PostDetail = () => {
       navigate('/login');
       return;
     }
-    navigate(`/contribute/${userId}/${postId}/1`); // Include nodeId as '1' for the parent node
+    navigate(`/contribute/${userId}/${postId}/1`);
   };
 
   const handleSave = async () => {
@@ -446,12 +432,10 @@ const PostDetail = () => {
     try {
       const savedPostDocRef = doc(db, 'posts', 'usersavedpost', user.uid, postId);
       if (isSaved) {
-        // Unsave the post by deleting the document
-        await setDoc(savedPostDocRef, {}, { merge: false }); // Firestore doesn't have a direct delete in this context, so we overwrite with empty data
+        await setDoc(savedPostDocRef, {}, { merge: false });
         setIsSaved(false);
         console.log('PostDetail - Post unsaved successfully');
       } else {
-        // Save the post
         const postToSave = {
           postId: postId,
           originalUserId: userId,
@@ -515,6 +499,11 @@ const PostDetail = () => {
     return date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', hour12: false });
   };
 
+  const formatFullTimestamp = (timestamp) => {
+    const date = new Date(timestamp);
+    return date.toLocaleString();
+  };
+
   const truncatePrompt = (prompt) => {
     const words = prompt.split(/\s+/);
     if (words.length <= 70) return { truncated: prompt, needsTruncation: false };
@@ -524,16 +513,77 @@ const PostDetail = () => {
     };
   };
 
+  const handleReplyClick = (commentIndex) => {
+    setReplyingTo(commentIndex);
+    setTimeout(() => {
+      if (replyInputRef.current) {
+        replyInputRef.current.focus();
+      }
+    }, 100);
+  };
+
   if (loading) {
-    return <div style={{ color: '#FFFFFF', backgroundColor: '#000000', padding: '10px' }}>Loading...</div>;
+    return (
+      <div style={{ 
+        color: '#FFFFFF', 
+        backgroundColor: '#000000', 
+        padding: '2rem',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        paddingLeft: '80px'
+      }}>
+        <div style={{ textAlign: 'center' }}>
+          <div style={{ marginBottom: '1rem' }}>Loading...</div>
+          <div style={{ 
+            width: '40px', 
+            height: '40px', 
+            border: '3px solid #333', 
+            borderTop: '3px solid #fff', 
+            borderRadius: '50%', 
+            animation: 'spin 1s linear infinite',
+            margin: '0 auto'
+          }}></div>
+        </div>
+      </div>
+    );
   }
 
   if (error) {
-    return <div style={{ color: '#FF4040', backgroundColor: '#000000', padding: '10px' }}>{error}</div>;
+    return (
+      <div style={{ 
+        color: '#FFFFFF', 
+        backgroundColor: '#000000', 
+        padding: '2rem',
+        textAlign: 'center',
+        minHeight: '100vh',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingLeft: '80px'
+      }}>
+        {error}
+      </div>
+    );
   }
 
   if (!post || !post.aiGeneratedUrl) {
-    return <div style={{ color: '#FFFFFF', backgroundColor: '#000000', padding: '10px' }}>Post not found</div>;
+    return (
+      <div style={{ 
+        color: '#FFFFFF', 
+        backgroundColor: '#000000', 
+        padding: '2rem',
+        textAlign: 'center',
+        minHeight: '100vh',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        paddingLeft: '80px'
+      }}>
+        Post not found
+      </div>
+    );
   }
 
   const promptData = post.promptUsed ? truncatePrompt(post.promptUsed) : { truncated: '', needsTruncation: false };
@@ -543,667 +593,909 @@ const PostDetail = () => {
       backgroundColor: '#000000',
       color: '#FFFFFF',
       minHeight: '100vh',
-      padding: '2rem 0.5rem',
-      display: 'flex',
-      gap: '1.5rem',
-      '@media (max-width: 768px)': {
-        flexDirection: 'column'
-      }
+      width: '100%',
+      paddingLeft: '80px',
+      transition: 'padding-left 0.3s ease'
     }}>
-      {/* Left Side: AI Image */}
+      {/* Main Post Content */}
       <div style={{
-        flex: '1',
-        maxWidth: '45%',
-        position: 'sticky',
-        top: '2rem',
-        alignSelf: 'flex-start',
-        '@media (max-width: 768px)': {
-          maxWidth: '100%',
-          position: 'relative',
-          top: 0
+        padding: '1.5rem',
+        display: 'flex',
+        gap: '2rem',
+        width: '100%',
+        boxSizing: 'border-box',
+        minHeight: 'calc(100vh - 3rem)',
+        '@media (max-width: 1024px)': {
+          flexDirection: 'column',
+          gap: '1rem',
+          padding: '1rem'
         }
       }}>
-        <motion.div
-          style={{
-            borderRadius: '8px',
-            padding: '0.3rem',
-            backgroundColor: '#000000'
-          }}
-        >
-          {mediaError ? (
-            <div style={{
-              width: '100%',
-              maxHeight: '400px',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              backgroundColor: '#000000',
-              color: '#FFFFFF',
-              fontSize: '14px',
-              borderRadius: '8px',
-              boxShadow: '0 0 8px rgba(255, 255, 255, 0.1)'
-            }}>
-              Media failed to load
-            </div>
-          ) : isVideo ? (
-            <>
-              <video
-                ref={videoRef}
-                controls
-                autoPlay
-                loop
-                muted
-                playsInline
-                crossOrigin="anonymous"
-                style={{
-                  width: '100%',
-                  maxHeight: '400px',
-                  objectFit: 'contain',
-                  backgroundColor: '#000000',
-                  borderRadius: '8px',
-                  boxShadow: '0 0 8px rgba(255, 255, 255, 0.1)'
-                }}
-                onError={(e) => {
-                  console.error('PostDetail - Video error:', e.nativeEvent);
-                  setMediaError(true);
-                  setIsPlaying(false);
-                }}
-                onCanPlay={() => console.log('PostDetail - Video can play')}
-                onPlay={() => setIsPlaying(true)}
-                onPause={() => setIsPlaying(false)}
-                onDoubleClick={handleDoubleClickLike}
-              >
-                <source src={post.aiGeneratedUrl} type={`video/${post.aiGeneratedUrl.split('.').pop().split('?')[0]}`} />
-                Your browser does not support the video tag.
-              </video>
-              {!isPlaying && (
-                <motion.button
-                  onClick={handleManualPlay}
-                  style={{
-                    position: 'absolute',
-                    top: '50%',
-                    left: '50%',
-                    transform: 'translate(-50%, -50%)',
-                    backgroundColor: 'rgba(0, 0, 0, 0.7)',
-                    color: '#FFFFFF',
-                    border: 'none',
-                    borderRadius: '50%',
-                    width: '40px',
-                    height: '40px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    cursor: 'pointer'
-                  }}
-                  whileHover={{ scale: 1.2 }}
-                >
-                  <FaPlay size={20} />
-                </motion.button>
-              )}
-            </>
-          ) : (
-            <img
-              src={post.aiGeneratedUrl}
-              alt="Post"
-              style={{
-                width: '100%',
-                maxHeight: '400px',
-                objectFit: 'contain',
-                backgroundColor: '#000000',
-                borderRadius: '8px',
-                boxShadow: '0 0 8px rgba(255, 255, 255, 0.1)'
-              }}
-              onError={(e) => {
-                console.error('PostDetail - Image error:', e.nativeEvent);
-                setMediaError(true);
-              }}
-              onDoubleClick={handleDoubleClickLike}
-            />
-          )}
-        </motion.div>
-      </div>
-
-      {/* Right Side: All Details */}
-      <div style={{
-        flex: '1',
-        maxHeight: 'calc(100vh - 4rem)',
-        overflowY: 'auto',
-        paddingRight: '0.3rem',
-        scrollbarWidth: 'thin',
-        scrollbarColor: '#FFFFFF #333333',
-        '@media (max-width: 768px)': {
-          maxHeight: 'none'
-        }
-      }}>
-        {/* Post Info Section */}
-        <div style={{ marginBottom: '1rem' }}>
-          <div style={{
-            display: 'flex',
-            alignItems: 'center',
-            gap: '0.5rem',
-            marginBottom: '0.5rem'
-          }}>
-            <img
-              src={userProfilePic}
-              alt="User Profile"
-              style={{
-                width: '24px',
-                height: '24px',
-                borderRadius: '50%',
-                objectFit: 'cover',
-                border: '1px solid #FFFFFF'
-              }}
-              onError={(e) => {
-                e.target.src = 'https://via.placeholder.com/24?text=User';
-              }}
-            />
-            <Link
-              to={`/profile/${userId}`}
-              style={{
-                fontSize: '16px',
-                fontWeight: '600',
-                color: '#FFFFFF',
-                textDecoration: 'none',
-                position: 'relative'
-              }}
-              onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-              onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-            >
-              @{post.username || 'user'}
-              <span
-                style={{
-                  position: 'absolute',
-                  bottom: '-2px',
-                  left: 0,
-                  width: '100%',
-                  height: '2px',
-                  background: 'linear-gradient(90deg, #FFFFFF, #BBBBBB, #FFFFFF)',
-                  animation: 'glow 2s ease-in-out infinite'
-                }}
-              />
-            </Link>
-          </div>
-
-          {post.caption && (
-            <p style={{
-              fontSize: '14px',
-              marginBottom: '0.5rem'
-            }}>
-              {renderTextWithMentionsAndHashtags(post.caption)}
-            </p>
-          )}
-
-          <div style={{
-            display: 'flex',
-            gap: '1rem',
-            marginBottom: '0.5rem',
-            alignItems: 'center'
-          }}>
-            <motion.button
-              onClick={handleLike}
-              style={{
-                color: '#FFFFFF',
-                background: 'none',
-                border: 'none',
-                fontSize: '16px',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px'
-              }}
-              whileHover={{ scale: 1.2 }}
-            >
-              {isLiked ? <FaHeart size={20} /> : <FaRegHeart size={20} />} {post.likedBy ? post.likedBy.length : 0}
-            </motion.button>
-            <motion.button
-              onClick={handleShare}
-              style={{
-                color: '#FFFFFF',
-                background: 'none',
-                border: 'none',
-                fontSize: '16px',
-                display: 'flex',
-                alignItems: 'center'
-              }}
-              whileHover={{ scale: 1.2 }}
-            >
-              <FaShareAlt size={20} />
-            </motion.button>
-            <motion.button
-              onClick={handleSave}
-              style={{
-                color: '#FFFFFF',
-                background: 'none',
-                border: 'none',
-                fontSize: '16px',
-                display: 'flex',
-                alignItems: 'center'
-              }}
-              whileHover={{ scale: 1.2 }}
-            >
-              {isSaved ? <FaBookmark size={20} /> : <FaRegBookmark size={20} />}
-            </motion.button>
-          </div>
-
-          <p style={{
-            fontSize: '14px',
-            color: '#CCCCCC',
-            textAlign: 'right'
-          }}>
-            Posted on: {post.createdAt?.toDate ? post.createdAt.toDate().toLocaleString() : new Date(post.createdAt).toLocaleString()}
-          </p>
-        </div>
-
-        <hr style={{
-          border: 'none',
-          borderTop: '1px solid #333333',
-          margin: '0.8rem 0'
-        }} />
-
+        {/* Left Side: Media */}
         <div style={{
+          flex: '1.2',
+          minHeight: '600px',
           display: 'flex',
           alignItems: 'center',
-          gap: '0.5rem',
-          marginBottom: '0.8rem'
+          '@media (max-width: 1024px)': {
+            minHeight: '400px'
+          }
         }}>
           <motion.div
-            className="luminous-colorful-border"
             style={{
-              padding: '8px 12px',
-              borderRadius: '4px',
-              background: '#000000',
-              color: '#FFFFFF',
-              fontSize: '14px',
-              fontWeight: '500',
-              textAlign: 'center',
-              minWidth: '100px',
-              border: '1px solid #FFFFFF'
+              borderRadius: '16px',
+              overflow: 'hidden',
+              backgroundColor: '#111111',
+              border: '2px solid #333333',
+              position: 'relative',
+              width: '100%',
+              height: 'fit-content',
+              maxHeight: '80vh'
             }}
-            whileHover={{ scale: 1.05 }}
+            whileHover={{ borderColor: '#FFFFFF' }}
           >
-            {post.modelUsed || 'Unknown'}
+            {mediaError ? (
+              <div style={{
+                width: '100%',
+                height: '400px',
+                display: 'flex',
+                alignItems: 'center',
+                justifyContent: 'center',
+                backgroundColor: '#222222',
+                color: '#FFFFFF',
+                fontSize: '16px',
+                borderRadius: '16px'
+              }}>
+                <div style={{ textAlign: 'center' }}>
+                  <FaEye size={40} style={{ marginBottom: '1rem', opacity: 0.5 }} />
+                  <div>Media failed to load</div>
+                </div>
+              </div>
+            ) : isVideo ? (
+              <>
+                <video
+                  ref={videoRef}
+                  controls
+                  autoPlay
+                  loop
+                  muted
+                  playsInline
+                  crossOrigin="anonymous"
+                  style={{
+                    width: '100%',
+                    height: 'auto',
+                    maxHeight: '80vh',
+                    objectFit: 'contain',
+                    backgroundColor: '#000000',
+                    borderRadius: '16px'
+                  }}
+                  onError={(e) => {
+                    console.error('PostDetail - Video error:', e.nativeEvent);
+                    setMediaError(true);
+                    setIsPlaying(false);
+                  }}
+                  onCanPlay={() => console.log('PostDetail - Video can play')}
+                  onPlay={() => setIsPlaying(true)}
+                  onPause={() => setIsPlaying(false)}
+                  onDoubleClick={handleDoubleClickLike}
+                >
+                  <source src={post.aiGeneratedUrl} type={`video/${post.aiGeneratedUrl.split('.').pop().split('?')[0]}`} />
+                  Your browser does not support the video tag.
+                </video>
+                {!isPlaying && (
+                  <motion.button
+                    onClick={handleManualPlay}
+                    style={{
+                      position: 'absolute',
+                      top: '50%',
+                      left: '50%',
+                      transform: 'translate(-50%, -50%)',
+                      backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                      color: '#FFFFFF',
+                      border: '2px solid #FFFFFF',
+                      borderRadius: '50%',
+                      width: '60px',
+                      height: '60px',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      cursor: 'pointer'
+                    }}
+                    whileHover={{ scale: 1.1, backgroundColor: 'rgba(255, 255, 255, 0.1)' }}
+                    whileTap={{ scale: 0.95 }}
+                  >
+                    <FaPlay size={24} />
+                  </motion.button>
+                )}
+              </>
+            ) : (
+              <img
+                src={post.aiGeneratedUrl}
+                alt="Post"
+                style={{
+                  width: '100%',
+                  height: 'auto',
+                  maxHeight: '80vh',
+                  objectFit: 'contain',
+                  backgroundColor: '#000000',
+                  borderRadius: '16px'
+                }}
+                onError={(e) => {
+                  console.error('PostDetail - Image error:', e.nativeEvent);
+                  setMediaError(true);
+                }}
+                onDoubleClick={handleDoubleClickLike}
+              />
+            )}
           </motion.div>
-          <motion.button
-            onClick={handleRemix}
-            disabled={!post.chatLink}
-            style={{
-              padding: '8px 12px',
-              background: post.chatLink
-                ? 'linear-gradient(45deg, #FFFFFF, #CCCCCC)'
-                : 'linear-gradient(45deg, #555555, #666666)',
-              color: post.chatLink ? '#000000' : '#AAAAAA',
-              borderRadius: '4px',
-              border: '1px solid #FFFFFF',
-              cursor: post.chatLink ? 'pointer' : 'not-allowed',
-              fontSize: '14px',
-              fontWeight: '500',
-              textAlign: 'center',
-              minWidth: '100px',
-              boxShadow: post.chatLink ? '0 0 5px rgba(255, 255, 255, 0.2)' : 'none'
-            }}
-            whileHover={post.chatLink ? { scale: 1.05 } : {}}
-          >
-            Remix
-          </motion.button>
-          <motion.button
-            onClick={handleContribute}
-            style={{
-              padding: '8px 12px',
-              background: 'linear-gradient(45deg, #FFD700, #FFA500)', // Gold to orange gradient
-              color: '#000000',
-              borderRadius: '4px',
-              border: '1px solid #FFFFFF',
-              cursor: 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              textAlign: 'center',
-              minWidth: '100px',
-              boxShadow: '0 0 5px rgba(255, 215, 0, 0.2)'
-            }}
-            whileHover={{ scale: 1.05 }}
-          >
-            Contribute
-          </motion.button>
         </div>
 
-        {(post.originalUrl || post.promptUsed) && (
-          <div style={{
-            display: 'flex',
-            gap: '0.8rem',
-            marginBottom: '0.8rem',
-            alignItems: 'flex-start',
-            flexWrap: 'wrap'
-          }}>
-            {post.originalUrl && (
-              <div style={{ flex: '0 0 auto' }}>
-                <p style={{ fontSize: '16px', fontWeight: '600', marginBottom: '0.5rem' }}>
-                  Original:
-                </p>
-                <motion.div
-                  style={{
-                    ...getSmallAspectRatioStyle(),
-                    backgroundColor: '#222222',
-                    borderRadius: '8px',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden',
-                    border: '1px solid #FFFFFF',
-                    cursor: 'pointer'
-                  }}
-                  onClick={() => setShowOriginalModal(true)}
-                  whileHover={{ scale: 1.02 }}
-                >
-                  {post.originalUrl.includes('video') ? (
-                    <video
-                      src={post.originalUrl}
-                      autoPlay
-                      loop
-                      muted
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        backgroundColor: '#000000'
-                      }}
-                    />
-                  ) : (
-                    <img
-                      src={post.originalUrl}
-                      alt="Original Media"
-                      style={{
-                        width: '100%',
-                        height: '100%',
-                        objectFit: 'cover',
-                        borderRadius: '8px'
-                      }}
-                      onError={(e) => {
-                        console.error('PostDetail - Original image error:', e.nativeEvent);
-                        e.target.src = 'https://via.placeholder.com/120?text=Original';
-                      }}
-                    />
-                  )}
-                </motion.div>
-              </div>
-            )}
-            {post.promptUsed && (
-              <div style={{
-                flex: '1',
-                minWidth: '150px',
-                paddingTop: post.originalUrl ? '24px' : '0'
-              }}>
-                <p style={{ fontSize: '16px', fontWeight: '600', marginBottom: '0.3rem' }}>
-                  Prompt:{' '}
-                  <span style={{ fontWeight: '400', fontSize: '14px' }}>
-                    {showFullPrompt || !promptData.needsTruncation
-                      ? post.promptUsed
-                      : promptData.truncated}
-                  </span>
-                  {promptData.needsTruncation && (
-                    <motion.button
-                      onClick={() => setShowFullPrompt(!showFullPrompt)}
-                      style={{
-                        background: 'none',
-                        border: 'none',
-                        color: '#007bff',
-                        fontSize: '14px',
-                        marginLeft: '5px',
-                        cursor: 'pointer',
-                        padding: '0'
-                      }}
-                      whileHover={{ scale: 1.05 }}
-                    >
-                      {showFullPrompt ? 'See Less' : 'See More'}
-                    </motion.button>
-                  )}
-                </p>
-              </div>
-            )}
-          </div>
-        )}
-
-        <hr style={{
-          border: 'none',
-          borderTop: '1px solid #333333',
-          margin: '0.8rem 0'
-        }} />
-
-        <div style={{ marginBottom: '0.8rem' }}>
-          <motion.button
-            onClick={() => setShowComments(!showComments)}
+        {/* Right Side: Post Details */}
+        <div style={{
+          flex: '0.8',
+          display: 'flex',
+          flexDirection: 'column',
+          gap: '1rem',
+          maxHeight: '80vh',
+          overflowY: 'auto',
+          paddingRight: '0.5rem',
+          '@media (max-width: 1024px)': {
+            maxHeight: 'none',
+            paddingRight: 0
+          }
+        }}>
+          {/* Author Section */}
+          <motion.div
             style={{
+              backgroundColor: '#111111',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              border: '1px solid #333333'
+            }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5 }}
+          >
+            <div style={{
               display: 'flex',
               alignItems: 'center',
-              gap: '0.5rem',
-              background: 'none',
-              border: 'none',
-              color: '#FFFFFF',
-              fontSize: '16px',
-              fontWeight: '600',
-              cursor: 'pointer'
-            }}
-            whileHover={{ scale: 1.05 }}
-          >
-            <FaRegComment size={20} /> {post.comments ? post.comments.length : 0} Comments
-          </motion.button>
+              gap: '1rem',
+              marginBottom: '1rem'
+            }}>
+              <img
+                src={userProfilePic}
+                alt="User Profile"
+                style={{
+                  width: '50px',
+                  height: '50px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '2px solid #FFFFFF'
+                }}
+                onError={(e) => {
+                  e.target.src = 'https://via.placeholder.com/50?text=User';
+                }}
+              />
+              <div style={{ flex: 1 }}>
+                <Link
+                  to={`/profile/${userId}`}
+                  style={{
+                    fontSize: '1.2rem',
+                    fontWeight: '600',
+                    color: '#FFFFFF',
+                    textDecoration: 'none',
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: '0.5rem'
+                  }}
+                  onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                  onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                >
+                  <FaUser size={16} />
+                  @{post.username || 'user'}
+                </Link>
+                <div style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  fontSize: '0.9rem',
+                  color: '#CCCCCC',
+                  marginTop: '0.25rem'
+                }}>
+                  <FaClock size={14} />
+                  {post.createdAt?.toDate ? 
+                    formatFullTimestamp(post.createdAt.toDate()) : 
+                    formatFullTimestamp(new Date(post.createdAt))
+                  }
+                </div>
+              </div>
+            </div>
 
-          {showComments && (
-            <>
-              <div style={{ marginTop: '0.8rem', marginBottom: '0.8rem' }}>
-                {post.comments && post.comments.length > 0 ? (
-                  post.comments.map((c, index) => (
-                    <div key={index} style={{ marginBottom: '0.8rem' }}>
-                      <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start' }}>
-                        <img
-                          src={c.profilePic}
-                          alt="Commenter Profile"
-                          style={{
-                            width: '24px',
-                            height: '24px',
-                            borderRadius: '50%',
-                            objectFit: 'cover',
-                            border: '1px solid #FFFFFF'
-                          }}
-                          onError={(e) => {
-                            console.error('PostDetail - Comment profile pic error:', c.profilePic);
-                            e.target.src = 'https://via.placeholder.com/24?text=User';
-                          }}
-                        />
-                        <div style={{ flex: 1 }}>
-                          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Link
-                              to={`/profile/${c.userId || userId}`}
-                              style={{
-                                fontSize: '14px',
-                                fontWeight: '600',
-                                color: '#FFFFFF',
-                                textDecoration: 'none'
-                              }}
-                              onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                              onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                            >
-                              @{c.username}
-                            </Link>
-                            <p style={{ fontSize: '12px', color: '#CCCCCC' }}>
-                              {formatTimestamp(c.timestamp)}
-                            </p>
-                          </div>
-                          <p style={{ fontSize: '14px', marginTop: '0.2rem' }}>
-                            {renderTextWithMentionsAndHashtags(c.comment)}
-                          </p>
-                          <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.5rem' }}>
-                            <motion.button
-                              onClick={() => handleCommentLike(index)}
-                              style={{
-                                color: '#FFFFFF',
-                                background: 'none',
-                                border: 'none',
-                                fontSize: '14px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                              whileHover={{ scale: 1.1 }}
-                            >
-                              {c.likes && c.likes.includes(user?.uid) ? <FaHeart size={18} /> : <FaRegHeart size={18} />}
-                              {c.likes ? c.likes.length : 0}
-                            </motion.button>
-                            <motion.button
-                              onClick={() => commentInputRef.current.focus()}
-                              style={{
-                                color: '#FFFFFF',
-                                background: 'none',
-                                border: 'none',
-                                fontSize: '14px',
-                                display: 'flex',
-                                alignItems: 'center',
-                                gap: '4px'
-                              }}
-                              whileHover={{ scale: 1.1 }}
-                            >
-                              <FaReply size={18} /> Reply
-                            </motion.button>
-                          </div>
-                        </div>
-                      </div>
-                      {c.replies && c.replies.length > 0 && (
-                        <div style={{ marginLeft: '1.5rem', marginTop: '0.5rem', position: 'relative' }}>
-                          <div style={{
-                            position: 'absolute',
-                            left: '12px',
-                            top: '-0.3rem',
-                            bottom: '0',
-                            width: '2px',
-                            backgroundColor: '#CCCCCC'
-                          }} />
-                          {c.replies.map((reply, rIndex) => (
-                            <div key={rIndex} style={{ display: 'flex', gap: '0.5rem', alignItems: 'flex-start', marginBottom: '0.5rem', position: 'relative' }}>
-                              <div style={{
-                                position: 'absolute',
-                                left: '-0.75rem',
-                                top: '12px',
-                                width: '0.75rem',
-                                height: '2px',
-                                backgroundColor: '#CCCCCC'
-                              }} />
-                              <img
-                                src={reply.profilePic}
-                                alt="Replier Profile"
-                                style={{
-                                  width: '20px',
-                                  height: '20px',
-                                  borderRadius: '50%',
-                                  objectFit: 'cover',
-                                  border: '1px solid #FFFFFF'
-                                }}
-                                onError={(e) => {
-                                  console.error('PostDetail - Reply profile pic error:', reply.profilePic);
-                                  e.target.src = 'https://via.placeholder.com/20?text=User';
-                                }}
-                              />
-                              <div style={{ flex: '1' }}>
-                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                  <Link
-                                    to={`/profile/${reply.userId || userId}`}
-                                    style={{
-                                      fontSize: '13px',
-                                      fontWeight: '600',
-                                      color: '#FFFFFF',
-                                      textDecoration: 'none'
-                                    }}
-                                    onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
-                                    onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
-                                  >
-                                    @{reply.username}
-                                  </Link>
-                                  <p style={{ fontSize: '11px', color: '#CCCCCC' }}>
-                                    {formatTimestamp(reply.timestamp)}
-                                  </p>
-                                </div>
-                                <p style={{ fontSize: '13px', marginTop: '0.2rem' }}>
-                                  {renderTextWithMentionsAndHashtags(reply.comment)}
-                                </p>
-                                <div style={{ display: 'flex', gap: '0.8rem', marginTop: '0.5rem' }}>
-                                  <motion.button
-                                    onClick={() => handleCommentReplyLike(index, rIndex)}
-                                    style={{
-                                      color: '#FFFFFF',
-                                      background: 'none',
-                                      border: 'none',
-                                      fontSize: '13px',
-                                      display: 'flex',
-                                      alignItems: 'center',
-                                      gap: '4px'
-                                    }}
-                                    whileHover={{ scale: 1.1 }}
-                                  >
-                                    {reply.likes && reply.likes.includes(user?.uid) ? <FaHeart size={16} /> : <FaRegHeart size={16} />}
-                                    {reply.likes ? reply.likes.length : 0}
-                                  </motion.button>
-                                </div>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  ))
-                ) : (
-                  <p style={{ fontSize: '14px', color: '#CCCCCC', marginBottom: '0.8rem' }}>
-                    No comments yet.
-                  </p>
-                )}
+            {post.caption && (
+              <div style={{ marginBottom: '1rem' }}>
+                <h3 style={{ 
+                  fontSize: '1rem', 
+                  fontWeight: '600', 
+                  marginBottom: '0.5rem',
+                  color: '#FFFFFF'
+                }}>
+                  Caption
+                </h3>
+                <p style={{
+                  fontSize: '0.95rem',
+                  lineHeight: '1.5',
+                  color: '#EEEEEE'
+                }}>
+                  {renderTextWithMentionsAndHashtags(post.caption)}
+                </p>
+              </div>
+            )}
+
+            {/* Action Buttons */}
+            <div style={{
+              display: 'flex',
+              gap: '1rem',
+              alignItems: 'center',
+              flexWrap: 'wrap'
+            }}>
+              <motion.button
+                onClick={handleLike}
+                style={{
+                  color: '#FFFFFF',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer'
+                }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {isLiked ? <FaHeart size={20} /> : <FaRegHeart size={20} />} 
+                {post.likedBy ? post.likedBy.length : 0}
+              </motion.button>
+              
+              <motion.button
+                onClick={handleShare}
+                style={{
+                  color: '#FFFFFF',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer'
+                }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                <FaShareAlt size={20} />
+                Share
+              </motion.button>
+              
+              <motion.button
+                onClick={handleSave}
+                style={{
+                  color: '#FFFFFF',
+                  background: 'none',
+                  border: 'none',
+                  fontSize: '1rem',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '0.5rem',
+                  cursor: 'pointer'
+                }}
+                whileHover={{ scale: 1.1 }}
+                whileTap={{ scale: 0.95 }}
+              >
+                {isSaved ? <FaBookmark size={20} /> : <FaRegBookmark size={20} />}
+                Save
+              </motion.button>
+            </div>
+          </motion.div>
+
+          {/* Model and Actions Section */}
+          <motion.div
+            style={{
+              backgroundColor: '#111111',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              border: '1px solid #333333'
+            }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.1 }}
+          >
+            <div style={{
+              display: 'grid',
+              gap: '1rem'
+            }}>
+              {/* Model Used */}
+              <div>
+                <p style={{ 
+                  fontSize: '0.9rem', 
+                  color: '#CCCCCC', 
+                  marginBottom: '0.25rem' 
+                }}>
+                  AI Model
+                </p>
+                <div style={{
+                  padding: '8px 12px',
+                  borderRadius: '8px',
+                  background: 'linear-gradient(45deg, #333333, #444444)',
+                  color: '#FFFFFF',
+                  fontSize: '0.9rem',
+                  fontWeight: '500',
+                  border: '1px solid #555555'
+                }}>
+                  {post.modelUsed || 'Unknown'}
+                </div>
               </div>
 
+              {/* Action Buttons */}
               <div style={{
                 display: 'flex',
                 gap: '0.5rem',
-                alignItems: 'center'
+                flexWrap: 'wrap'
               }}>
-                <input
-                  ref={commentInputRef}
-                  type="text"
-                  value={comment}
-                  onChange={(e) => setComment(e.target.value)}
-                  onKeyPress={(e) => {
-                    if (e.key === 'Enter') {
-                      handleCommentSubmit(e);
-                    }
-                  }}
-                  placeholder="Add a comment..."
-                  style={{
-                    flex: '1',
-                    padding: '8px',
-                    borderRadius: '8px',
-                    border: '1px solid #FFFFFF',
-                    backgroundColor: '#000000',
-                    color: '#FFFFFF',
-                    outline: 'none',
-                    fontSize: '14px'
-                  }}
-                />
                 <motion.button
-                  onClick={handleCommentSubmit}
+                  onClick={handleRemix}
+                  disabled={!post.chatLink}
                   style={{
-                    backgroundColor: '#FFFFFF',
-                    color: '#000000',
-                    padding: '8px 12px',
+                    padding: '10px 16px',
+                    background: post.chatLink
+                      ? 'linear-gradient(45deg, #555555, #666666)'
+                      : 'linear-gradient(45deg, #333333, #444444)',
+                    color: '#FFFFFF',
+                    borderRadius: '8px',
+                    border: 'none',
+                    cursor: post.chatLink ? 'pointer' : 'not-allowed',
+                    fontSize: '0.9rem',
+                    fontWeight: '500',
+                    opacity: post.chatLink ? 1 : 0.6
+                  }}
+                  whileHover={post.chatLink ? { scale: 1.05 } : {}}
+                  whileTap={post.chatLink ? { scale: 0.95 } : {}}
+                >
+                  Remix
+                </motion.button>
+                
+                <motion.button
+                  onClick={handleContribute}
+                  style={{
+                    padding: '10px 16px',
+                    background: 'linear-gradient(45deg, #666666, #777777)',
+                    color: '#FFFFFF',
                     borderRadius: '8px',
                     border: 'none',
                     cursor: 'pointer',
-                    fontSize: '14px',
+                    fontSize: '0.9rem',
                     fontWeight: '500'
                   }}
                   whileHover={{ scale: 1.05 }}
                   whileTap={{ scale: 0.95 }}
                 >
-                  Post
+                  Contribute
                 </motion.button>
               </div>
-            </>
-          )}
+
+              {/* Original Image and Prompt */}
+              {(post.originalUrl || post.promptUsed) && (
+                <div style={{
+                  display: 'flex',
+                  gap: '1rem',
+                  alignItems: 'flex-start',
+                  flexWrap: 'wrap'
+                }}>
+                  {post.originalUrl && (
+                    <div style={{ flex: '0 0 auto' }}>
+                      <p style={{ 
+                        fontSize: '0.9rem', 
+                        color: '#CCCCCC', 
+                        marginBottom: '0.5rem' 
+                      }}>
+                        Original Reference
+                      </p>
+                      <motion.div
+                        style={{
+                          ...getSmallAspectRatioStyle(),
+                          backgroundColor: '#222222',
+                          borderRadius: '8px',
+                          display: 'flex',
+                          alignItems: 'center',
+                          justifyContent: 'center',
+                          overflow: 'hidden',
+                          border: '1px solid #444444',
+                          cursor: 'pointer'
+                        }}
+                        onClick={() => setShowOriginalModal(true)}
+                        whileHover={{ scale: 1.02, borderColor: '#FFFFFF' }}
+                        whileTap={{ scale: 0.98 }}
+                      >
+                        {post.originalUrl.includes('video') ? (
+                          <video
+                            src={post.originalUrl}
+                            autoPlay
+                            loop
+                            muted
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover'
+                            }}
+                          />
+                        ) : (
+                          <img
+                            src={post.originalUrl}
+                            alt="Original Media"
+                            style={{
+                              width: '100%',
+                              height: '100%',
+                              objectFit: 'cover',
+                              borderRadius: '8px'
+                            }}
+                            onError={(e) => {
+                              console.error('PostDetail - Original image error:', e.nativeEvent);
+                              e.target.src = 'https://via.placeholder.com/120?text=Original';
+                            }}
+                          />
+                        )}
+                      </motion.div>
+                    </div>
+                  )}
+                  
+                  {post.promptUsed && (
+                    <div style={{
+                      flex: '1',
+                      minWidth: '200px'
+                    }}>
+                      <p style={{ 
+                        fontSize: '0.9rem', 
+                        color: '#CCCCCC', 
+                        marginBottom: '0.5rem' 
+                      }}>
+                        AI Prompt
+                      </p>
+                      <div style={{
+                        backgroundColor: '#222222',
+                        padding: '0.75rem',
+                        borderRadius: '8px',
+                        border: '1px solid #444444'
+                      }}>
+                        <p style={{ 
+                          fontSize: '0.85rem', 
+                          lineHeight: '1.4',
+                          color: '#EEEEEE'
+                        }}>
+                          {showFullPrompt || !promptData.needsTruncation
+                            ? post.promptUsed
+                            : promptData.truncated}
+                        </p>
+                        {promptData.needsTruncation && (
+                          <motion.button
+                            onClick={() => setShowFullPrompt(!showFullPrompt)}
+                            style={{
+                              background: 'none',
+                              border: 'none',
+                              color: '#FFFFFF',
+                              fontSize: '0.8rem',
+                              marginTop: '0.5rem',
+                              cursor: 'pointer',
+                              padding: '0'
+                            }}
+                            whileHover={{ scale: 1.05 }}
+                          >
+                            {showFullPrompt ? 'Show Less' : 'Show More'}
+                          </motion.button>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          </motion.div>
+
+          {/* Comments Section */}
+          <motion.div
+            style={{
+              backgroundColor: '#111111',
+              borderRadius: '16px',
+              padding: '1.5rem',
+              border: '1px solid #333333',
+              flex: 1
+            }}
+            initial={{ opacity: 0, y: 20 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.5, delay: 0.2 }}
+          >
+            <div style={{
+              display: 'flex',
+              alignItems: 'center',
+              gap: '0.5rem',
+              marginBottom: '1rem'
+            }}>
+              <FaRegComment size={20} />
+              <h3 style={{ fontSize: '1.1rem', fontWeight: '600' }}>
+                Comments ({post.comments ? post.comments.length : 0})
+              </h3>
+            </div>
+
+            {/* Add Comment Form */}
+            <div style={{
+              display: 'flex',
+              gap: '0.75rem',
+              alignItems: 'flex-start',
+              marginBottom: '1.5rem'
+            }}>
+              <img
+                src={user?.photoURL || 'https://via.placeholder.com/32?text=You'}
+                alt="Your Profile"
+                style={{
+                  width: '32px',
+                  height: '32px',
+                  borderRadius: '50%',
+                  objectFit: 'cover',
+                  border: '1px solid #444444'
+                }}
+              />
+              <div style={{ flex: 1 }}>
+                <textarea
+                  ref={commentInputRef}
+                  value={comment}
+                  onChange={(e) => setComment(e.target.value)}
+                  placeholder="Add a comment..."
+                  style={{
+                    width: '100%',
+                    padding: '0.75rem',
+                    borderRadius: '8px',
+                    border: '1px solid #444444',
+                    backgroundColor: '#222222',
+                    color: '#FFFFFF',
+                    outline: 'none',
+                    fontSize: '0.9rem',
+                    resize: 'vertical',
+                    minHeight: '60px'
+                  }}
+                />
+                <motion.button
+                  onClick={handleCommentSubmit}
+                  disabled={!comment.trim()}
+                  style={{
+                    backgroundColor: comment.trim() ? '#FFFFFF' : '#666666',
+                    color: comment.trim() ? '#000000' : '#CCCCCC',
+                    padding: '8px 16px',
+                    borderRadius: '8px',
+                    border: 'none',
+                    cursor: comment.trim() ? 'pointer' : 'not-allowed',
+                    fontSize: '0.9rem',
+                    fontWeight: '500',
+                    marginTop: '0.5rem'
+                  }}
+                  whileHover={comment.trim() ? { scale: 1.05 } : {}}
+                  whileTap={comment.trim() ? { scale: 0.95 } : {}}
+                >
+                  Post Comment
+                </motion.button>
+              </div>
+            </div>
+
+            {/* Comments List */}
+            <div style={{ 
+              maxHeight: '400px', 
+              overflowY: 'auto',
+              paddingRight: '0.5rem'
+            }}>
+              {post.comments && post.comments.length > 0 ? (
+                post.comments.map((c, index) => (
+                  <motion.div
+                    key={index}
+                    style={{ 
+                      marginBottom: '1.5rem',
+                      paddingBottom: '1rem',
+                      borderBottom: index < post.comments.length - 1 ? '1px solid #333333' : 'none'
+                    }}
+                    initial={{ opacity: 0, y: 10 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.3, delay: index * 0.1 }}
+                  >
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'flex-start' }}>
+                      <img
+                        src={c.profilePic}
+                        alt="Commenter Profile"
+                        style={{
+                          width: '32px',
+                          height: '32px',
+                          borderRadius: '50%',
+                          objectFit: 'cover',
+                          border: '1px solid #444444'
+                        }}
+                        onError={(e) => {
+                          e.target.src = 'https://via.placeholder.com/32?text=User';
+                        }}
+                      />
+                      <div style={{ flex: 1 }}>
+                        <div style={{ 
+                          display: 'flex', 
+                          justifyContent: 'space-between', 
+                          alignItems: 'center',
+                          marginBottom: '0.25rem'
+                        }}>
+                          <Link
+                            to={`/profile/${c.userId || userId}`}
+                            style={{
+                              fontSize: '0.9rem',
+                              fontWeight: '600',
+                              color: '#FFFFFF',
+                              textDecoration: 'none'
+                            }}
+                            onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                            onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                          >
+                            @{c.username}
+                          </Link>
+                          <span style={{ fontSize: '0.8rem', color: '#999999' }}>
+                            {formatTimestamp(c.timestamp)}
+                          </span>
+                        </div>
+                        
+                        <p style={{ 
+                          fontSize: '0.9rem', 
+                          lineHeight: '1.4',
+                          marginBottom: '0.5rem',
+                          color: '#EEEEEE'
+                        }}>
+                          {renderTextWithMentionsAndHashtags(c.comment)}
+                        </p>
+                        
+                        <div style={{ 
+                          display: 'flex', 
+                          gap: '1rem', 
+                          alignItems: 'center'
+                        }}>
+                          <motion.button
+                            onClick={() => handleCommentLike(index)}
+                            style={{
+                              color: '#CCCCCC',
+                              background: 'none',
+                              border: 'none',
+                              fontSize: '0.8rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              cursor: 'pointer'
+                            }}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            {c.likes && c.likes.includes(user?.uid) ? 
+                              <FaHeart size={14} /> : <FaRegHeart size={14} />
+                            }
+                            {c.likes ? c.likes.length : 0}
+                          </motion.button>
+                          
+                          <motion.button
+                            onClick={() => handleReplyClick(index)}
+                            style={{
+                              color: '#CCCCCC',
+                              background: 'none',
+                              border: 'none',
+                              fontSize: '0.8rem',
+                              display: 'flex',
+                              alignItems: 'center',
+                              gap: '0.25rem',
+                              cursor: 'pointer'
+                            }}
+                            whileHover={{ scale: 1.1 }}
+                            whileTap={{ scale: 0.95 }}
+                          >
+                            <FaReply size={14} />
+                            Reply
+                          </motion.button>
+                        </div>
+
+                        {/* Reply Form */}
+                        {replyingTo === index && (
+                          <motion.div
+                            style={{
+                              marginTop: '0.75rem',
+                              marginLeft: '1rem',
+                              padding: '0.75rem',
+                              backgroundColor: '#222222',
+                              borderRadius: '8px',
+                              border: '1px solid #444444'
+                            }}
+                            initial={{ opacity: 0, height: 0 }}
+                            animate={{ opacity: 1, height: 'auto' }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            <textarea
+                              ref={replyInputRef}
+                              value={replyComment}
+                              onChange={(e) => setReplyComment(e.target.value)}
+                              placeholder={`Reply to @${c.username}...`}
+                              style={{
+                                width: '100%',
+                                padding: '0.5rem',
+                                borderRadius: '6px',
+                                border: '1px solid #555555',
+                                backgroundColor: '#333333',
+                                color: '#FFFFFF',
+                                outline: 'none',
+                                fontSize: '0.85rem',
+                                resize: 'vertical',
+                                minHeight: '40px'
+                              }}
+                            />
+                            <div style={{ 
+                              display: 'flex', 
+                              gap: '0.5rem', 
+                              marginTop: '0.5rem' 
+                            }}>
+                              <motion.button
+                                onClick={(e) => handleCommentSubmit(e, index)}
+                                disabled={!replyComment.trim()}
+                                style={{
+                                  backgroundColor: replyComment.trim() ? '#FFFFFF' : '#666666',
+                                  color: replyComment.trim() ? '#000000' : '#CCCCCC',
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: 'none',
+                                  cursor: replyComment.trim() ? 'pointer' : 'not-allowed',
+                                  fontSize: '0.8rem',
+                                  fontWeight: '500'
+                                }}
+                                whileHover={replyComment.trim() ? { scale: 1.05 } : {}}
+                                whileTap={replyComment.trim() ? { scale: 0.95 } : {}}
+                              >
+                                Reply
+                              </motion.button>
+                              <motion.button
+                                onClick={() => {
+                                  setReplyingTo(null);
+                                  setReplyComment('');
+                                }}
+                                style={{
+                                  backgroundColor: 'transparent',
+                                  color: '#CCCCCC',
+                                  padding: '6px 12px',
+                                  borderRadius: '6px',
+                                  border: '1px solid #555555',
+                                  cursor: 'pointer',
+                                  fontSize: '0.8rem'
+                                }}
+                                whileHover={{ scale: 1.05 }}
+                                whileTap={{ scale: 0.95 }}
+                              >
+                                Cancel
+                              </motion.button>
+                            </div>
+                          </motion.div>
+                        )}
+
+                        {/* Replies */}
+                        {c.replies && c.replies.length > 0 && (
+                          <div style={{ 
+                            marginLeft: '1rem', 
+                            marginTop: '0.75rem',
+                            borderLeft: '2px solid #444444',
+                            paddingLeft: '1rem'
+                          }}>
+                            {c.replies.map((reply, rIndex) => (
+                              <motion.div 
+                                key={rIndex} 
+                                style={{ 
+                                  display: 'flex', 
+                                  gap: '0.5rem', 
+                                  alignItems: 'flex-start', 
+                                  marginBottom: '0.75rem'
+                                }}
+                                initial={{ opacity: 0, x: -10 }}
+                                animate={{ opacity: 1, x: 0 }}
+                                transition={{ duration: 0.3, delay: rIndex * 0.1 }}
+                              >
+                                <img
+                                  src={reply.profilePic}
+                                  alt="Replier Profile"
+                                  style={{
+                                    width: '24px',
+                                    height: '24px',
+                                    borderRadius: '50%',
+                                    objectFit: 'cover',
+                                    border: '1px solid #444444'
+                                  }}
+                                  onError={(e) => {
+                                    e.target.src = 'https://via.placeholder.com/24?text=User';
+                                  }}
+                                />
+                                <div style={{ flex: '1' }}>
+                                  <div style={{ 
+                                    display: 'flex', 
+                                    justifyContent: 'space-between', 
+                                    alignItems: 'center',
+                                    marginBottom: '0.25rem'
+                                  }}>
+                                    <Link
+                                      to={`/profile/${reply.userId || userId}`}
+                                      style={{
+                                        fontSize: '0.8rem',
+                                        fontWeight: '600',
+                                        color: '#FFFFFF',
+                                        textDecoration: 'none'
+                                      }}
+                                      onMouseEnter={(e) => e.target.style.textDecoration = 'underline'}
+                                      onMouseLeave={(e) => e.target.style.textDecoration = 'none'}
+                                    >
+                                      @{reply.username}
+                                    </Link>
+                                    <span style={{ fontSize: '0.75rem', color: '#999999' }}>
+                                      {formatTimestamp(reply.timestamp)}
+                                    </span>
+                                  </div>
+                                  <p style={{ 
+                                    fontSize: '0.85rem', 
+                                    lineHeight: '1.4',
+                                    marginBottom: '0.25rem',
+                                    color: '#EEEEEE'
+                                  }}>
+                                    {renderTextWithMentionsAndHashtags(reply.comment)}
+                                  </p>
+                                  <motion.button
+                                    onClick={() => handleCommentReplyLike(index, rIndex)}
+                                    style={{
+                                      color: '#CCCCCC',
+                                      background: 'none',
+                                      border: 'none',
+                                      fontSize: '0.75rem',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      gap: '0.25rem',
+                                      cursor: 'pointer'
+                                    }}
+                                    whileHover={{ scale: 1.1 }}
+                                    whileTap={{ scale: 0.95 }}
+                                  >
+                                    {reply.likes && reply.likes.includes(user?.uid) ? 
+                                      <FaHeart size={12} /> : <FaRegHeart size={12} />
+                                    }
+                                    {reply.likes ? reply.likes.length : 0}
+                                  </motion.button>
+                                </div>
+                              </motion.div>
+                            ))}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  </motion.div>
+                ))
+              ) : (
+                <div style={{ 
+                  textAlign: 'center', 
+                  color: '#999999', 
+                  padding: '2rem' 
+                }}>
+                  <FaRegComment size={40} style={{ marginBottom: '1rem', opacity: 0.5 }} />
+                  <p>No comments yet. Be the first to comment!</p>
+                </div>
+              )}
+            </div>
+          </motion.div>
         </div>
       </div>
 
+      {/* Recommendations Section */}
+      <div style={{ 
+        paddingLeft: '80px', 
+        transition: 'padding-left 0.3s ease' 
+      }}>
+        <RecommendedPosts currentPost={post} currentUserId={userId} />
+      </div>
+
+      {/* Share Modal */}
       {showShareModal && (
         <motion.div
           style={{
@@ -1221,43 +1513,55 @@ const PostDetail = () => {
           initial={{ opacity: 0 }}
           animate={{ opacity: 1 }}
           exit={{ opacity: 0 }}
+          onClick={() => setShowShareModal(false)}
         >
           <motion.div
             style={{
-              backgroundColor: '#000000',
-              padding: '1.5rem',
-              borderRadius: '8px',
-              width: '350px',
+              backgroundColor: '#111111',
+              padding: '2rem',
+              borderRadius: '16px',
+              width: '400px',
               maxWidth: '90%',
               color: '#FFFFFF',
-              border: '1px solid #FFFFFF'
+              border: '1px solid #333333'
             }}
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.9 }}
+            onClick={(e) => e.stopPropagation()}
           >
-            <h3 style={{ fontSize: '1.2rem', fontWeight: '600', marginBottom: '0.5rem', textAlign: 'center' }}>
+            <h3 style={{ 
+              fontSize: '1.3rem', 
+              fontWeight: '600', 
+              marginBottom: '1rem', 
+              textAlign: 'center' 
+            }}>
               Share Post
             </h3>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '0.3rem', marginBottom: '0.5rem' }}>
+            <div style={{ 
+              display: 'flex', 
+              alignItems: 'center', 
+              gap: '0.5rem', 
+              marginBottom: '1rem' 
+            }}>
               <input
                 type="text"
                 value={window.location.href}
                 readOnly
                 style={{
                   flex: 1,
-                  padding: '6px',
+                  padding: '0.75rem',
                   borderRadius: '8px',
-                  border: '1px solid #FFFFFF',
+                  border: '1px solid #444444',
                   backgroundColor: '#222222',
                   color: '#FFFFFF',
-                  fontSize: '12px'
+                  fontSize: '0.9rem'
                 }}
               />
               <motion.button
                 onClick={() => copyToClipboard(window.location.href)}
                 style={{
-                  padding: '6px',
+                  padding: '0.75rem',
                   backgroundColor: '#FFFFFF',
                   color: '#000000',
                   borderRadius: '8px',
@@ -1265,12 +1569,12 @@ const PostDetail = () => {
                   cursor: 'pointer',
                   display: 'flex',
                   alignItems: 'center',
-                  gap: '3px'
+                  gap: '0.5rem'
                 }}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
-                <FaCopy size={18} /> Copy
+                <FaCopy size={16} /> Copy
               </motion.button>
             </div>
             <motion.button
@@ -1278,16 +1582,15 @@ const PostDetail = () => {
               style={{
                 display: 'block',
                 margin: '0 auto',
-                padding: '6px 12px',
+                padding: '0.75rem 1.5rem',
                 borderRadius: '8px',
-                border: '1px solid #FFFFFF',
-                backgroundColor: '#000000',
+                border: '1px solid #444444',
+                backgroundColor: 'transparent',
                 color: '#FFFFFF',
                 cursor: 'pointer',
-                fontSize: '12px',
-                fontWeight: '500'
+                fontSize: '0.9rem'
               }}
-              whileHover={{ backgroundColor: '#1a1a1a', scale: 1.05 }}
+              whileHover={{ backgroundColor: '#222222', scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               Close
@@ -1296,6 +1599,7 @@ const PostDetail = () => {
         </motion.div>
       )}
 
+      {/* Original Modal */}
       {showOriginalModal && post.originalUrl && (
         <motion.div
           style={{
@@ -1303,8 +1607,8 @@ const PostDetail = () => {
             top: 0,
             left: 0,
             right: 0,
-            bottom: '0',
-            backgroundColor: 'rgba(0, 0, 0, 0.8)',
+            bottom: 0,
+            backgroundColor: 'rgba(0, 0, 0, 0.9)',
             display: 'flex',
             justifyContent: 'center',
             alignItems: 'center',
@@ -1317,17 +1621,18 @@ const PostDetail = () => {
         >
           <motion.div
             style={{
-              width: '350px',
-              height: '350px',
-              borderRadius: '8px',
+              maxWidth: '80%',
+              maxHeight: '80%',
+              borderRadius: '16px',
               overflow: 'hidden',
               position: 'relative',
-              backgroundColor: '#222222',
-              border: '1px solid #FFFFFF'
+              backgroundColor: '#111111',
+              border: '2px solid #333333'
             }}
             initial={{ scale: 0.9 }}
             animate={{ scale: 1 }}
             exit={{ scale: 0.9 }}
+            onClick={(e) => e.stopPropagation()}
           >
             {post.originalUrl.includes('video') ? (
               <video
@@ -1339,8 +1644,7 @@ const PostDetail = () => {
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover',
-                  backgroundColor: '#000000'
+                  objectFit: 'contain'
                 }}
               />
             ) : (
@@ -1350,12 +1654,10 @@ const PostDetail = () => {
                 style={{
                   width: '100%',
                   height: '100%',
-                  objectFit: 'cover',
-                  borderRadius: '8px'
+                  objectFit: 'contain'
                 }}
                 onError={(e) => {
-                  console.error('PostDetail - Original image error:', e.nativeEvent);
-                  e.target.src = 'https://via.placeholder.com/350?text=Original';
+                  e.target.src = 'https://via.placeholder.com/400?text=Original';
                 }}
               />
             )}
@@ -1363,20 +1665,22 @@ const PostDetail = () => {
               onClick={() => setShowOriginalModal(false)}
               style={{
                 position: 'absolute',
-                top: '8px',
-                right: '8px',
-                backgroundColor: 'rgba(0, 0, 0, 0.7)',
+                top: '1rem',
+                right: '1rem',
+                backgroundColor: 'rgba(0, 0, 0, 0.8)',
                 color: '#FFFFFF',
-                border: 'none',
+                border: '1px solid #FFFFFF',
                 borderRadius: '50%',
-                width: '24px',
-                height: '24px',
+                width: '40px',
+                height: '40px',
                 display: 'flex',
                 alignItems: 'center',
                 justifyContent: 'center',
-                cursor: 'pointer'
+                cursor: 'pointer',
+                fontSize: '1.2rem'
               }}
               whileHover={{ scale: 1.1 }}
+              whileTap={{ scale: 0.95 }}
             >
               ✕
             </motion.button>
@@ -1386,43 +1690,13 @@ const PostDetail = () => {
 
       <style>
         {`
-          @keyframes rotateColorfulBorder {
-            0% {
-              border-image: linear-gradient(0deg, #FF4040, #40C4FF, #FFD740, #FF40FF) 1;
-              box-shadow: 0 0 10px rgba(255, 64, 64, 0.5);
-            }
-            25% {
-              border-image: linear-gradient(90deg, #40C4FF, #FFD740, #FF40FF, #FF4040) 1;
-              box-shadow: 0 0 10px rgba(64, 196, 255, 0.5);
-            }
-            50% {
-              border-image: linear-gradient(180deg, #FFD740, #FF40FF, #FF4040, #40C4FF) 1;
-              box-shadow: 0 0 10px rgba(255, 215, 64, 0.5);
-            }
-            75% {
-              border-image: linear-gradient(270deg, #FF40FF, #FF4040, #40C4FF, #FFD740) 1;
-              box-shadow: 0 0 10px rgba(255, 64, 255, 0.5);
-            }
-            100% {
-              border-image: linear-gradient(360deg, #FF4040, #40C4FF, #FFD740, #FF40FF) 1;
-              box-shadow: 0 0 10px rgba(255, 64, 64, 0.5);
-            }
+          @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
           }
-
-          @keyframes glow {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-          }
-
-          .luminous-colorful-border {
-            border: 2px solid transparent;
-            border-radius: 4px;
-            animation: rotateColorfulBorder 6s linear infinite;
-          }
-
+          
           ::-webkit-scrollbar {
-            width: 4px;
+            width: 6px;
           }
           ::-webkit-scrollbar-track {
             background: #333333;
@@ -1433,7 +1707,7 @@ const PostDetail = () => {
             borderRadius: 8px;
           }
           ::-webkit-scrollbar-thumb:hover {
-            background: #BBBBBB;
+            background: #CCCCCC;
           }
         `}
       </style>

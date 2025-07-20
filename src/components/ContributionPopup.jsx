@@ -134,76 +134,139 @@ const ContributionPopup = ({ onSubmit, onCancel, error, contributionMessage, isU
     <motion.div
       style={{
         position: 'fixed',
-        top: '12%',
-        left: '26%',
-        transform: 'translate(-50%, -50%)',
+        top: 0,
+        left: 0,
+        width: '100%',
+        height: '100%',
+        backgroundColor: 'rgba(0, 0, 0, 0.85)',
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
         zIndex: 1000,
-        backgroundColor: '#222222',
-        color: '#FFFFFF',
-        padding: '20px',
-        border: '2px solid #FFFFFF',
-        borderRadius: '10px',
-        width: '650px',
-        maxWidth: '90%',
-        boxShadow: '0 6px 12px rgba(0,0,0,0.5)',
+        backdropFilter: 'blur(8px)',
       }}
-      initial={{ opacity: 0, y: -20 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 20 }}
-      transition={{ duration: 0.3 }}
+      initial={{ opacity: 0 }}
+      animate={{ opacity: 1 }}
+      exit={{ opacity: 0 }}
+      onClick={onCancel}
     >
-      {/* Close button */}
-      <motion.button
-        onClick={onCancel}
+      <motion.div
         style={{
-          position: 'absolute',
-          top: '10px',
-          right: '10px',
-          background: 'none',
-          border: 'none',
+          backgroundColor: '#0F0F0F',
           color: '#FFFFFF',
-          cursor: 'pointer',
+          padding: '30px',
+          border: '2px solid #333333',
+          borderRadius: '20px',
+          width: '90%',
+          maxWidth: '600px',
+          maxHeight: '85vh',
+          overflowY: 'auto',
+          boxShadow: '0 20px 40px rgba(0, 0, 0, 0.5)',
+          position: 'relative',
         }}
-        whileHover={{ scale: 1.1 }}
-        whileTap={{ scale: 0.9 }}
+        initial={{ scale: 0.9, y: 20 }}
+        animate={{ scale: 1, y: 0 }}
+        exit={{ scale: 0.9, y: 20 }}
+        transition={{ duration: 0.3 }}
+        onClick={(e) => e.stopPropagation()}
       >
-        <FaTimes size={18} />
-      </motion.button>
+        {/* Close button */}
+        <motion.button
+          onClick={onCancel}
+          style={{
+            position: 'absolute',
+            top: '20px',
+            right: '20px',
+            backgroundColor: 'rgba(255, 255, 255, 0.1)',
+            border: '1px solid #333333',
+            color: '#FFFFFF',
+            cursor: 'pointer',
+            width: '35px',
+            height: '35px',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderRadius: '50%',
+            transition: 'all 0.2s',
+          }}
+          whileHover={{ backgroundColor: 'rgba(255, 255, 255, 0.2)', borderColor: '#FFFFFF' }}
+          whileTap={{ scale: 0.9 }}
+        >
+          <FaTimes size={18} />
+        </motion.button>
 
-      {/* Loading spinner */}
-      {isUploading && <LoadingSpinner />}
+        {/* Loading spinner */}
+        {isUploading && <LoadingSpinner />}
 
-      <h2 style={{ fontSize: '18px', margin: '0 0 15px 0', fontWeight: '600', textAlign: 'center' }}>Contribute to the Post(Node)</h2>
-      {(error || localError) && (
-        <p style={{ color: '#FF0000', fontSize: '13px', marginBottom: '10px', textAlign: 'center' }}>{error || localError}</p>
-      )}
-      {contributionMessage && (
-        <p style={{ color: '#FFFFFF', fontSize: '13px', marginBottom: '10px', textAlign: 'center', backgroundColor: '#4CAF50', padding: '5px', borderRadius: '5px' }}>{contributionMessage}</p>
-      )}
-      <form onSubmit={handleSubmit}>
+        {/* Header */}
+        <div style={{ textAlign: 'center', marginBottom: '30px' }}>
+          <h2 style={{ 
+            fontSize: '28px', 
+            margin: '0 0 12px 0', 
+            fontWeight: '700',
+            background: 'linear-gradient(45deg, #FFFFFF, #CCCCCC)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            backgroundClip: 'text'
+          }}>
+            ✨ Add Contribution
+          </h2>
+          <p style={{ color: '#AAAAAA', fontSize: '16px', margin: 0, lineHeight: '1.5' }}>
+            Share your creative work and inspire others
+          </p>
+        </div>
+              {(error || localError) && (
+          <div style={{ 
+            backgroundColor: 'rgba(255, 0, 0, 0.1)', 
+            border: '1px solid #FF4444', 
+            borderRadius: '10px', 
+            padding: '12px', 
+            marginBottom: '20px',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: '#FF4444', fontSize: '14px', margin: 0 }}>{error || localError}</p>
+          </div>
+        )}
+        {contributionMessage && (
+          <div style={{ 
+            backgroundColor: 'rgba(76, 175, 80, 0.1)', 
+            border: '1px solid #4CAF50', 
+            borderRadius: '10px', 
+            padding: '12px', 
+            marginBottom: '20px',
+            textAlign: 'center'
+          }}>
+            <p style={{ color: '#4CAF50', fontSize: '14px', margin: 0 }}>{contributionMessage}</p>
+          </div>
+        )}
+        <form onSubmit={handleSubmit} style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
         {/* Custom file upload area */}
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', fontSize: '14px', marginBottom: '5px', color: '#CCCCCC' }}>
-            Upload Media (Image/Video) <span style={{ color: '#FF0000' }}>*</span>
+        <div>
+          <label style={{ display: 'block', fontSize: '16px', marginBottom: '10px', color: '#FFFFFF', fontWeight: '600' }}>
+            📁 Upload Media <span style={{ color: '#FF4444' }}>*</span>
           </label>
           <div
             style={{
               position: 'relative',
               width: '100%',
-              height: '80px',
-              backgroundColor: '#2E2E2E',
-              border: '2px dashed #FFFFFF',
-              borderRadius: '5px',
+              height: '120px',
+              backgroundColor: '#1A1A1A',
+              border: '2px dashed #444444',
+              borderRadius: '15px',
               display: 'flex',
+              flexDirection: 'column',
               alignItems: 'center',
               justifyContent: 'center',
               cursor: isUploading ? 'not-allowed' : 'pointer',
+              transition: 'all 0.3s ease',
             }}
+            onMouseEnter={(e) => !isUploading && (e.target.style.borderColor = '#666666', e.target.style.backgroundColor = '#222222')}
+            onMouseLeave={(e) => !isUploading && (e.target.style.borderColor = '#444444', e.target.style.backgroundColor = '#1A1A1A')}
             onClick={() => !isUploading && document.getElementById('fileInputPopup').click()}
           >
-            <FaUpload size={20} style={{ marginRight: '10px', color: '#FFFFFF' }} />
-            <span style={{ color: '#FFFFFF', fontSize: '14px' }}>
-              {file ? file.name : 'Upload File'}
+            <FaUpload size={24} style={{ marginBottom: '8px', color: '#666666' }} />
+            <span style={{ color: '#AAAAAA', fontSize: '16px', textAlign: 'center' }}>
+              {file ? file.name : 'Click to upload image or video'}
             </span>
             <input
               id="fileInputPopup"
@@ -217,91 +280,114 @@ const ContributionPopup = ({ onSubmit, onCancel, error, contributionMessage, isU
         </div>
 
         {/* Prompt input */}
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', fontSize: '14px', marginBottom: '5px', color: '#CCCCCC' }}>
-            Prompt (Optional)
+        <div>
+          <label style={{ display: 'block', fontSize: '16px', marginBottom: '10px', color: '#FFFFFF', fontWeight: '600' }}>
+            ✍️ Prompt (Optional)
           </label>
           <textarea
             value={prompt}
             onChange={(e) => setPrompt(e.target.value)}
-            placeholder="Enter the prompt used for your contribution"
+            placeholder="Enter the prompt used for your contribution..."
             style={{
               width: '100%',
-              padding: '8px',
-              backgroundColor: '#2E2E2E',
+              padding: '15px',
+              backgroundColor: '#1A1A1A',
               color: '#FFFFFF',
-              border: '1px solid #FFFFFF',
-              borderRadius: '5px',
-              fontSize: '13px',
+              border: '2px solid #333333',
+              borderRadius: '12px',
+              fontSize: '14px',
               resize: 'vertical',
-              height: '80px',
-              transition: 'border-color 0.2s',
+              height: '100px',
+              transition: 'all 0.3s ease',
+              outline: 'none',
             }}
-            onFocus={(e) => e.target.style.borderColor = '#CCCCCC'}
-            onBlur={(e) => e.target.style.borderColor = '#FFFFFF'}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#666666';
+              e.target.style.backgroundColor = '#222222';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#333333';
+              e.target.style.backgroundColor = '#1A1A1A';
+            }}
             disabled={isUploading}
           />
         </div>
 
         {/* Model input with real-time suggestions */}
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', fontSize: '14px', marginBottom: '5px', color: '#CCCCCC' }}>
-            Model Used (Optional)
+        <div>
+          <label style={{ display: 'block', fontSize: '16px', marginBottom: '10px', color: '#FFFFFF', fontWeight: '600' }}>
+            🤖 Model Used (Optional)
           </label>
-          <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+          <div style={{ display: 'flex', gap: '15px', alignItems: 'flex-start' }}>
             <input
               type="text"
               value={modelInput}
               onChange={(e) => setModelInput(e.target.value)}
-              placeholder="Enter model name"
+              placeholder="Enter model name..."
               style={{
                 flex: 1,
-                padding: '8px',
-                backgroundColor: '#2E2E2E',
+                padding: '15px',
+                backgroundColor: '#1A1A1A',
                 color: '#FFFFFF',
-                border: '1px solid #FFFFFF',
-                borderRadius: '5px',
-                fontSize: '13px',
-                transition: 'border-color 0.2s',
+                border: '2px solid #333333',
+                borderRadius: '12px',
+                fontSize: '14px',
+                transition: 'all 0.3s ease',
+                outline: 'none',
               }}
-              onFocus={(e) => e.target.style.borderColor = '#CCCCCC'}
-              onBlur={(e) => e.target.style.borderColor = '#FFFFFF'}
+              onFocus={(e) => {
+                e.target.style.borderColor = '#666666';
+                e.target.style.backgroundColor = '#222222';
+              }}
+              onBlur={(e) => {
+                e.target.style.borderColor = '#333333';
+                e.target.style.backgroundColor = '#1A1A1A';
+              }}
               disabled={isUploading}
             />
             <div
               style={{
                 flex: 1,
-                maxHeight: '100px',
+                maxHeight: '150px',
                 overflowY: 'auto',
-                backgroundColor: '#2E2E2E',
-                border: '1px solid #FFFFFF',
-                borderRadius: '5px',
-                padding: '5px',
+                backgroundColor: '#1A1A1A',
+                border: '2px solid #333333',
+                borderRadius: '12px',
+                padding: '10px',
               }}
             >
               {filteredModels.length > 0 ? (
-                filteredModels.map((model) => (
+                filteredModels.slice(0, 8).map((model) => (
                   <div
                     key={model}
                     onClick={() => !isUploading && setModelInput(model)}
                     style={{
-                      padding: '6px',
+                      padding: '10px',
                       cursor: isUploading ? 'not-allowed' : 'pointer',
                       color: '#FFFFFF',
-                      fontSize: '13px',
-                      backgroundColor: model === modelInput ? '#4A4A4A' : 'transparent',
-                      borderRadius: '3px',
-                      transition: 'background-color 0.2s',
+                      fontSize: '14px',
+                      backgroundColor: model === modelInput ? '#333333' : 'transparent',
+                      borderRadius: '8px',
+                      transition: 'all 0.2s ease',
+                      marginBottom: '2px',
                     }}
-                    onMouseEnter={(e) => !isUploading && (e.target.style.backgroundColor = model === modelInput ? '#4A4A4A' : '#4A4A4A')}
-                    onMouseLeave={(e) => !isUploading && (e.target.style.backgroundColor = model === modelInput ? '#4A4A4A' : 'transparent')}
+                    onMouseEnter={(e) => {
+                      if (!isUploading) {
+                        e.target.style.backgroundColor = model === modelInput ? '#444444' : '#222222';
+                      }
+                    }}
+                    onMouseLeave={(e) => {
+                      if (!isUploading) {
+                        e.target.style.backgroundColor = model === modelInput ? '#333333' : 'transparent';
+                      }
+                    }}
                   >
                     {model}
                   </div>
                 ))
               ) : (
-                <div style={{ padding: '6px', color: '#CCCCCC', fontSize: '13px' }}>
-                  No matching models
+                <div style={{ padding: '10px', color: '#666666', fontSize: '14px', textAlign: 'center' }}>
+                  No matching models found
                 </div>
               )}
             </div>
@@ -309,9 +395,9 @@ const ContributionPopup = ({ onSubmit, onCancel, error, contributionMessage, isU
         </div>
 
         {/* Chat Link input */}
-        <div style={{ marginBottom: '15px' }}>
-          <label style={{ display: 'block', fontSize: '14px', marginBottom: '5px', color: '#CCCCCC' }}>
-            Chat Link (Optional)
+        <div>
+          <label style={{ display: 'block', fontSize: '16px', marginBottom: '10px', color: '#FFFFFF', fontWeight: '600' }}>
+            🔗 Chat Link (Optional)
           </label>
           <input
             type="url"
@@ -320,37 +406,49 @@ const ContributionPopup = ({ onSubmit, onCancel, error, contributionMessage, isU
             placeholder="Enter chat link (e.g., https://chat.example.com)"
             style={{
               width: '100%',
-              padding: '8px',
-              backgroundColor: '#2E2E2E',
+              padding: '15px',
+              backgroundColor: '#1A1A1A',
               color: '#FFFFFF',
-              border: '1px solid #FFFFFF',
-              borderRadius: '5px',
-              fontSize: '13px',
-              transition: 'border-color 0.2s',
+              border: '2px solid #333333',
+              borderRadius: '12px',
+              fontSize: '14px',
+              transition: 'all 0.3s ease',
+              outline: 'none',
             }}
-            onFocus={(e) => e.target.style.borderColor = '#CCCCCC'}
-            onBlur={(e) => e.target.style.borderColor = '#FFFFFF'}
+            onFocus={(e) => {
+              e.target.style.borderColor = '#666666';
+              e.target.style.backgroundColor = '#222222';
+            }}
+            onBlur={(e) => {
+              e.target.style.borderColor = '#333333';
+              e.target.style.backgroundColor = '#1A1A1A';
+            }}
             disabled={isUploading}
           />
         </div>
 
         {/* Action buttons */}
-        <div style={{ display: 'flex', gap: '10px', justifyContent: 'center', alignItems: 'center' }}>
+        <div style={{ display: 'flex', gap: '15px', justifyContent: 'center', alignItems: 'center', marginTop: '10px' }}>
           <motion.button
             type="button"
             onClick={onCancel}
             style={{
-              padding: '8px 16px',
-              backgroundColor: '#2E2E2E',
+              padding: '15px 30px',
+              backgroundColor: 'transparent',
               color: '#FFFFFF',
-              border: '2px solid #FFFFFF',
-              borderRadius: '5px',
+              border: '2px solid #444444',
+              borderRadius: '12px',
               cursor: isUploading ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              transition: 'background-color 0.2s, color 0.2s',
+              fontSize: '16px',
+              fontWeight: '600',
+              transition: 'all 0.3s ease',
+              minWidth: '120px',
             }}
-            whileHover={isUploading ? {} : { backgroundColor: '#FFFFFF', color: '#1C2526' }}
+            whileHover={isUploading ? {} : { 
+              backgroundColor: '#222222', 
+              borderColor: '#666666',
+              scale: 1.05
+            }}
             whileTap={isUploading ? {} : { scale: 0.95 }}
             disabled={isUploading}
           >
@@ -359,26 +457,31 @@ const ContributionPopup = ({ onSubmit, onCancel, error, contributionMessage, isU
           <motion.button
             type="submit"
             style={{
-              padding: '8px 16px',
-              backgroundColor: isUploading ? '#4A4A4A' : '#222222',
-              color: '#FFFFFF',
+              padding: '15px 30px',
+              backgroundColor: isUploading ? '#444444' : '#FFFFFF',
+              color: isUploading ? '#AAAAAA' : '#000000',
               border: '2px solid #FFFFFF',
-              borderRadius: '5px',
+              borderRadius: '12px',
               cursor: isUploading ? 'not-allowed' : 'pointer',
-              fontSize: '14px',
-              fontWeight: '500',
-              transition: 'background-color 0.2s, color 0.2s',
+              fontSize: '16px',
+              fontWeight: '600',
+              transition: 'all 0.3s ease',
+              minWidth: '120px',
             }}
-            whileHover={isUploading ? {} : { backgroundColor: '#FFFFFF', color: '#1C2526' }}
-            whileTap={isUploading ? {} : { scale: '0.95' }}
+            whileHover={isUploading ? {} : { 
+              backgroundColor: '#CCCCCC',
+              scale: 1.05
+            }}
+            whileTap={isUploading ? {} : { scale: 0.95 }}
             disabled={isUploading}
           >
-            {isUploading ? 'Uploading...' : 'Submit'}
+            {isUploading ? '⏳ Uploading...' : '🚀 Submit'}
           </motion.button>
         </div>
       </form>
-    </motion.div>
-  );
-};
+        </motion.div>
+      </motion.div>
+    );
+  };
 
-export default ContributionPopup;
+  export default ContributionPopup;

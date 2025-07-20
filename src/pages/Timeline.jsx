@@ -10,7 +10,9 @@ import {
   FaReply,
   FaTrashAlt,
   FaTimes,
+  FaMapMarkerAlt,
 } from 'react-icons/fa';
+import { LazyImage } from '../components/LazyLoad';
 
 const Timeline = ({
   parentNode,
@@ -35,6 +37,7 @@ const Timeline = ({
   setReplyingTo,
   getRelativeTime,
   handleRemix,
+  onLocateInTimeline,
 }) => {
   const [expandedComments, setExpandedComments] = useState({});
   const [localComments, setLocalComments] = useState({});
@@ -288,7 +291,7 @@ const Timeline = ({
   const totalContributions = sortedNodes.length;
 
   return (
-    <div style={{ padding: '20px', backgroundColor: '#000000', color: '#FFFFFF', position: 'relative' }}>
+    <div className="timeline-section" style={{ padding: '20px', backgroundColor: '#000000', color: '#FFFFFF', position: 'relative' }}>
       <div
         style={{
           position: 'absolute',
@@ -546,6 +549,36 @@ const Timeline = ({
                     />
                     <span style={{ fontSize: '12px' }}>Download</span>
                   </motion.div>
+                  {onLocateInTimeline && (
+                    <motion.div
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        onLocateInTimeline(node.id);
+                      }}
+                      style={{
+                        cursor: 'pointer',
+                        color: '#FFFFFF',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '4px',
+                        border: '1px solid #555555',
+                        borderRadius: '5px',
+                        padding: '8px 16px',
+                      }}
+                      whileHover={{ scale: 1.05 }}
+                      whileTap={{ scale: 0.95 }}
+                    >
+                      <FaMapMarkerAlt
+                        size={20}
+                        style={{
+                          fill: 'none',
+                          stroke: '#FFFFFF',
+                          strokeWidth: 30,
+                        }}
+                      />
+                      <span style={{ fontSize: '12px' }}>Locate</span>
+                    </motion.div>
+                  )}
                 </div>
 
                 {/* Comments Section (Exclude for Parent Node) */}

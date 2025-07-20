@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { motion } from 'framer-motion';
 import { useNavigate } from 'react-router-dom';
-import { FaShareAlt, FaArrowCircleDown } from 'react-icons/fa';
+import { FaShareAlt, FaArrowCircleDown, FaMapMarkerAlt } from 'react-icons/fa';
 import { auth, db } from '../firebase/firebase';
 import { doc, getDoc } from 'firebase/firestore';
+import { LazyImage, LazyVideo } from './LazyLoad';
 
-const ContributionCard = ({ contribution, userId, postId, onClick, postMedia }) => {
+const ContributionCard = ({ contribution, userId, postId, onClick, postMedia, onLocateInTimeline }) => {
   const navigate = useNavigate();
   const mediaUrl = contribution.imageUrl || postMedia || 'https://dummyimage.com/400x400/000/fff?text=Media+Unavailable';
   console.log(`ContributionCard - contributionId: ${contribution.id}, imageUrl: ${contribution.imageUrl}, postMedia: ${postMedia}, final mediaUrl: ${mediaUrl}`);
@@ -88,57 +89,35 @@ const ContributionCard = ({ contribution, userId, postId, onClick, postMedia }) 
     >
       {/* Media */}
       <div style={{ position: 'relative', width: '100%' }}>
-        {mediaUrl.endsWith('.mp4') || mediaUrl.endsWith('.webm') ? (
-          <video
-            ref={mediaRef}
+        {mediaUrl.includes('.mp4') || mediaUrl.includes('.webm') || mediaUrl.includes('.mov') ? (
+          <LazyVideo
             src={mediaUrl}
-            autoPlay
-            muted
-            loop
-            playsInline
-            controls
+            autoPlay={true}
+            loop={true}
+            muted={true}
+            controls={true}
             style={{
               width: '100%',
               height: 'auto',
-              objectFit: 'cover',
-              display: mediaLoaded ? 'block' : 'none',
+              objectFit: 'cover'
             }}
-            onError={(e) => {
-              console.error('Video playback error:', e);
-              e.target.src = 'https://dummyimage.com/400x400/000/fff?text=Video+Error';
+            onError={() => {
+              console.error('Video playback error');
             }}
           />
         ) : (
-          <img
-            ref={mediaRef}
+          <LazyImage
             src={mediaUrl}
             alt="Contribution Media"
             style={{
               width: '100%',
               height: 'auto',
-              objectFit: 'cover',
-              display: mediaLoaded ? 'block' : 'none',
+              objectFit: 'cover'
             }}
-            onError={(e) => {
-              e.target.src = 'https://dummyimage.com/400x400/000/fff?text=Image+Error';
+            onError={() => {
+              console.error('Image loading error');
             }}
           />
-        )}
-        {!mediaLoaded && (
-          <div
-            style={{
-              width: '100%',
-              height: '200px',
-              backgroundColor: '#333333',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'center',
-              color: '#AAAAAA',
-              fontSize: '12px',
-            }}
-          >
-            Loading...
-          </div>
         )}
       </div>
 
@@ -199,6 +178,22 @@ const ContributionCard = ({ contribution, userId, postId, onClick, postMedia }) 
             >
               <FaArrowCircleDown size={18} style={{ fill: 'none', stroke: '#FFFFFF', strokeWidth: 30 }} />
             </motion.div>
+            {onLocateInTimeline && (
+              <motion.div
+                onClick={(e) => { 
+                  e.stopPropagation(); 
+                  if (userId && postId) {
+                    navigate(`/contribute/${userId}/${postId}?nodeId=${contribution.id}`);
+                  }
+                }}
+                style={{ cursor: 'pointer', color: '#FFFFFF' }}
+                whileHover={{ scale: 1.3 }}
+                whileTap={{ scale: 0.9 }}
+                title="Go to Contribution Page"
+              >
+                <FaMapMarkerAlt size={18} style={{ fill: 'none', stroke: '#FFFFFF', strokeWidth: 30 }} />
+              </motion.div>
+            )}
           </div>
         </div>
       </motion.div>

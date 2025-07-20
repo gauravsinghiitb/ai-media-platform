@@ -13,6 +13,8 @@ import FlowGraph from '../components/FlowGraph';
 import NodeDetailsCard from '../components/NodeDetailsCard';
 import ContributionPopup from '../components/ContributionPopup';
 import Timeline from './Timeline';
+import BackgroundUploadNotification from '../components/BackgroundUploadNotification';
+import UploadStatusBar from '../components/UploadStatusBar';
 
 // Debounce utility
 const debounce = (func, wait) => {
@@ -173,6 +175,11 @@ const ContributePage = () => {
   const [nodeComments, setNodeComments] = useState({});
   const [newNodeComment, setNewNodeComment] = useState({});
   const [replyingTo, setReplyingTo] = useState(null); // Track which comment is being replied to
+  const [showBackgroundNotification, setShowBackgroundNotification] = useState(false);
+  const [backgroundNotificationMessage, setBackgroundNotificationMessage] = useState('');
+  const [backgroundNotificationType, setBackgroundNotificationType] = useState('info');
+  const [showStatusBar, setShowStatusBar] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('uploading');
 
   const graphContainerRef = useRef(null);
   const dimensions = useElementDimensions(graphContainerRef);
@@ -847,6 +854,19 @@ const ContributePage = () => {
     []
   );
 
+  const handleLocateInTimeline = useCallback(
+    (nodeId) => {
+      // Scroll to timeline section and highlight the contribution
+      const timelineSection = document.querySelector('.timeline-section');
+      if (timelineSection) {
+        timelineSection.scrollIntoView({ behavior: 'smooth' });
+        // You can add additional highlighting logic here
+        console.log('Locating contribution in timeline:', nodeId);
+      }
+    },
+    []
+  );
+
   const handleContributionSubmit = useCallback(
     async (e, { file, prompt, modelInput, chatLink }) => {
       e.preventDefault();
@@ -866,69 +886,88 @@ const ContributePage = () => {
         return;
       }
   
-      setIsUploading(true);
       setContributionMessage('');
       setError('');
   
-      try {
-        const storagePath = `contributions/${userId}/${postId}/${Date.now()}-${file.name}`;
-        const storageRef = ref(storage, storagePath);
-        await uploadBytes(storageRef, file);
-        const downloadURL = await getDownloadURL(storageRef);
+      // Show success message immediately and close popup
+      setContributionMessage('Contribution submitted! Uploading in background...');
+      setShowPopup(false);
+      setSelectedNodeId(null);
+      
+      // Show background upload notification
+      setBackgroundNotificationMessage('Contribution uploaded successfully!');
+      setBackgroundNotificationType('success');
+      setShowBackgroundNotification(true);
+      setUploadStatus('completed');
+      setShowStatusBar(true);
+      
+      // Clear message after 3 seconds
+      setTimeout(() => {
+        setContributionMessage('');
+      }, 3000);
   
-        const newNodeId = uuidv4();
-        const newNode = sanitizeNodeData({
-          id: newNodeId,
-          imageUrl: downloadURL,
-          prompt: prompt || null,       // Allow empty prompt
-          model: modelInput || null,    // Allow empty model
-          parentId: selectedNodeId,
-          upvotesCount: 0,
-          downvotesCount: 0,
-          userUpvotes: [],
-          userDownvotes: [],
-          comments: [],
-          createdAt: new Date().toISOString(),
-          userId: user.uid,
-          username: user.displayName || 'unknown',
-          profilePic: user.photoURL || 'https://dummyimage.com/30x30/000/fff?text=User',
-          chatLink: chatLink || null,
-        });
+      // Upload in background
+      const uploadContribution = async () => {
+        try {
+          const storagePath = `contributions/${userId}/${postId}/${Date.now()}-${file.name}`;
+          const storageRef = ref(storage, storagePath);
+          await uploadBytes(storageRef, file);
+          const downloadURL = await getDownloadURL(storageRef);
+    
+          const newNodeId = uuidv4();
+          const newNode = sanitizeNodeData({
+            id: newNodeId,
+            imageUrl: downloadURL,
+            prompt: prompt || null,       // Allow empty prompt
+            model: modelInput || null,    // Allow empty model
+            parentId: selectedNodeId,
+            upvotesCount: 0,
+            downvotesCount: 0,
+            userUpvotes: [],
+            userDownvotes: [],
+            comments: [],
+            createdAt: new Date().toISOString(),
+            userId: user.uid,
+            username: user.displayName || 'unknown',
+            profilePic: user.photoURL || 'https://dummyimage.com/30x30/000/fff?text=User',
+            chatLink: chatLink || null,
+          });
+    
+          const newEdges = [];
+          const parentEdge = {
+            id: uuidv4(),
+            source: selectedNodeId,
+            target: newNodeId,
+            sourceHandle: 'source',
+            targetHandle: 'target',
+            type: 'flowing',
+            data: { isLeafEdge: false },
+          };
+          newEdges.push(parentEdge);
+    
+          const contributionId = uuidv4();
+          const contributionRef = doc(db, 'contributions', userId, postId, contributionId);
+          await setDoc(
+            contributionRef,
+            {
+              nodes: [newNode],
+              edges: newEdges,
+            },
+            { merge: true }
+          );
+    
+          console.log('Contribution uploaded successfully in background');
+        } catch (err) {
+          console.error('Failed to upload contribution in background:', err);
+          // Show error notification
+          setBackgroundNotificationMessage('Failed to upload contribution. Please try again.');
+          setBackgroundNotificationType('error');
+          setShowBackgroundNotification(true);
+        }
+      };
   
-        const newEdges = [];
-        const parentEdge = {
-          id: uuidv4(),
-          source: selectedNodeId,
-          target: newNodeId,
-          sourceHandle: 'source',
-          targetHandle: 'target',
-          type: 'flowing',
-          data: { isLeafEdge: false },
-        };
-        newEdges.push(parentEdge);
-  
-        const contributionId = uuidv4();
-        const contributionRef = doc(db, 'contributions', userId, postId, contributionId);
-        await setDoc(
-          contributionRef,
-          {
-            nodes: [newNode],
-            edges: newEdges,
-          },
-          { merge: true }
-        );
-  
-        setContributionMessage('Thanks for the contribution');
-        setTimeout(() => {
-          setContributionMessage('');
-          setShowPopup(false);
-          setSelectedNodeId(null);
-        }, 3000);
-      } catch (err) {
-        setError(`Failed to submit contribution: ${err.message}`);
-      } finally {
-        setIsUploading(false);
-      }
+      // Start background upload
+      uploadContribution();
     },
     [user, userId, postId, selectedNodeId, navigate]
   );
@@ -1314,7 +1353,12 @@ const ContributePage = () => {
   }
 
   return (
-    <div style={{ backgroundColor: '#000000', color: '#FFFFFF', minHeight: '100vh' }}>
+    <div style={{ 
+      backgroundColor: '#000000', 
+      color: '#FFFFFF', 
+      minHeight: '100vh',
+      paddingLeft: '250px'
+    }}>
       <div
         ref={graphContainerRef}
         style={{
@@ -1464,6 +1508,26 @@ const ContributePage = () => {
         setReplyingTo={setReplyingTo}
         getRelativeTime={getRelativeTime}
         handleRemix={handleRemix}
+        onLocateInTimeline={handleLocateInTimeline}
+      />
+      
+      {/* Background Upload Notification */}
+      <BackgroundUploadNotification
+        isVisible={showBackgroundNotification}
+        onClose={() => setShowBackgroundNotification(false)}
+        message={backgroundNotificationMessage}
+        type={backgroundNotificationType}
+        autoHide={true}
+        duration={4000}
+      />
+      
+      {/* Upload Status Bar */}
+      <UploadStatusBar
+        isVisible={showStatusBar}
+        onClose={() => setShowStatusBar(false)}
+        message="Contribution upload in progress..."
+        status={uploadStatus}
+        progress={0}
       />
     </div>
   );

@@ -3,10 +3,15 @@ import { motion } from 'framer-motion';
 import Card from './Card';
 import ContributionCard from './ContributionCard';
 
-const SearchPosts = ({ filteredPosts, filteredContributions }) => {
-  console.log('SearchPosts rendering with filteredPosts:', filteredPosts, 'length:', filteredPosts.length, 'filteredContributions:', filteredContributions, 'length:', filteredContributions.length);
+const SearchPosts = ({ filteredPosts = [], filteredContributions = [] }) => {
+  // Add null checks for safety
+  const posts = filteredPosts || [];
+  const contributions = filteredContributions || [];
+  
+  console.log('SearchPosts rendering with filteredPosts:', posts, 'length:', posts.length, 'filteredContributions:', contributions, 'length:', contributions.length);
+  
   return (
-    (filteredPosts.length > 0 || filteredContributions.length > 0) && (
+    (posts.length > 0 || contributions.length > 0) && (
       <motion.section
         style={{
           padding: '2rem 1rem',
@@ -37,7 +42,7 @@ const SearchPosts = ({ filteredPosts, filteredContributions }) => {
           columnGap: '20px',
           margin: '0 auto'
         }}>
-          {[...filteredPosts, ...filteredContributions].map((item, index) => (
+          {[...posts, ...contributions].map((item, index) => (
             <motion.div
               key={item.createdAt || item.id || index}
               style={{ breakInside: 'avoid', marginBottom: '20px' }}

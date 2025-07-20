@@ -7,6 +7,9 @@ import { doc, setDoc, collection, serverTimestamp } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import LoadingSpinner from '../components/LoadingSpinner';
 import { FiUpload, FiArrowLeft, FiChevronDown } from 'react-icons/fi';
+import { LazyImage } from '../components/LazyLoad';
+import UploadProgressPopup from '../components/UploadProgressPopup';
+import UploadStatusBar from '../components/UploadStatusBar';
 
 const Upload = () => {
   const navigate = useNavigate();
@@ -28,6 +31,11 @@ const Upload = () => {
   const [isDraggingAI, setIsDraggingAI] = useState(false);
   const [isDraggingOriginal, setIsDraggingOriginal] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
+  const [showProgressPopup, setShowProgressPopup] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [estimatedTime, setEstimatedTime] = useState(0);
+  const [showStatusBar, setShowStatusBar] = useState(false);
+  const [uploadStatus, setUploadStatus] = useState('uploading');
 
   const aiGeneratedInputRef = useRef(null);
   const originalInputRef = useRef(null);
@@ -191,53 +199,87 @@ const Upload = () => {
       return;
     }
 
-    setLoading(true);
     setError(null);
 
-    try {
-      const postId = Date.now().toString();
+    // Start upload in background and redirect immediately
+    const uploadPost = async () => {
+      try {
+        const postId = Date.now().toString();
+        const startTime = Date.now();
+        
+        // Show progress popup and status bar
+        setShowProgressPopup(true);
+        setShowStatusBar(true);
+        setUploadProgress(10);
+        setEstimatedTime(30); // Estimate 30 seconds
 
-      // Upload AI-generated file
-      const aiGeneratedRef = ref(storage, `posts/${user.uid}/${postId}/ai-generated/${aiGeneratedFile.name}`);
-      await uploadBytes(aiGeneratedRef, aiGeneratedFile);
-      const aiGeneratedUrl = await getDownloadURL(aiGeneratedRef);
+        // Upload AI-generated file
+        const aiGeneratedRef = ref(storage, `posts/${user.uid}/${postId}/ai-generated/${aiGeneratedFile.name}`);
+        setUploadProgress(30);
+        await uploadBytes(aiGeneratedRef, aiGeneratedFile);
+        const aiGeneratedUrl = await getDownloadURL(aiGeneratedRef);
+        setUploadProgress(60);
 
-      // Upload original file if provided
-      let originalUrl = '';
-      if (originalFile) {
-        const originalRef = ref(storage, `posts/${user.uid}/${postId}/original/${originalFile.name}`);
-        await uploadBytes(originalRef, originalFile);
-        originalUrl = await getDownloadURL(originalRef);
+        // Upload original file if provided
+        let originalUrl = '';
+        if (originalFile) {
+          const originalRef = ref(storage, `posts/${user.uid}/${postId}/original/${originalFile.name}`);
+          setUploadProgress(70);
+          await uploadBytes(originalRef, originalFile);
+          originalUrl = await getDownloadURL(originalRef);
+          setUploadProgress(85);
+        }
+
+        // Create post document in the 'posts' collection
+        const postRef = doc(db, 'posts', postId);
+        setUploadProgress(90);
+        const post = {
+          aiGeneratedUrl,
+          originalUrl: originalUrl || '',
+          modelUsed,
+          promptUsed,
+          chatLink,
+          caption,
+          createdAt: serverTimestamp(),
+          userId: user.uid,
+          username: user.displayName || 'gaurav1',
+          profilePic: user.photoURL || 'https://dummyimage.com/30x30/000/fff?text=User',
+          upvotes: 0,
+          downvotes: 0,
+          upvotedBy: [],
+          downvotedBy: [],
+          comments: [],
+        };
+
+        await setDoc(postRef, post);
+        setUploadProgress(100);
+
+        // Show success message
+        const uploadTime = Date.now() - startTime;
+        console.log(`Post uploaded successfully in ${uploadTime}ms`);
+        
+        // Update status to completed
+        setUploadStatus('completed');
+        
+        // Hide popup and status bar after 3 seconds
+        setTimeout(() => {
+          setShowProgressPopup(false);
+          setShowStatusBar(false);
+        }, 3000);
+      } catch (err) {
+        console.error('Failed to upload post:', err);
+        setUploadStatus('error');
+        setShowProgressPopup(false);
+        setShowStatusBar(false);
+        // Could show a toast notification here for errors
       }
+    };
 
-      // Create post document in the 'posts' collection
-      const postRef = doc(db, 'posts', postId);
-      const post = {
-        aiGeneratedUrl,
-        originalUrl: originalUrl || '',
-        modelUsed,
-        promptUsed,
-        chatLink,
-        caption,
-        createdAt: serverTimestamp(),
-        userId: user.uid,
-        username: user.displayName || 'gaurav1',
-        profilePic: user.photoURL || 'https://dummyimage.com/30x30/000/fff?text=User',
-        upvotes: 0,
-        downvotes: 0,
-        upvotedBy: [],
-        downvotedBy: [],
-        comments: [],
-      };
+    // Start upload in background
+    uploadPost();
 
-      await setDoc(postRef, post);
-
-      navigate('/feed');
-    } catch (err) {
-      setError('Failed to upload post: ' + err.message);
-    } finally {
-      setLoading(false);
-    }
+    // Redirect to explore page immediately
+    navigate('/explore');
   };
 
   const handleCaptionChange = (e) => {
@@ -1105,6 +1147,23 @@ const Upload = () => {
           }
         `}
       </style>
+      
+      {/* Upload Progress Popup */}
+      <UploadProgressPopup
+        isVisible={showProgressPopup}
+        onClose={() => setShowProgressPopup(false)}
+        uploadProgress={uploadProgress}
+        estimatedTime={estimatedTime}
+      />
+      
+      {/* Upload Status Bar */}
+      <UploadStatusBar
+        isVisible={showStatusBar}
+        onClose={() => setShowStatusBar(false)}
+        message="Post upload in progress..."
+        status={uploadStatus}
+        progress={uploadProgress}
+      />
     </div>
   );
 };

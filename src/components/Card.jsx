@@ -6,6 +6,7 @@ import { doc, getDoc, updateDoc, setDoc } from 'firebase/firestore';
 import { auth } from '../firebase/firebase';
 import { useNavigate } from 'react-router-dom';
 import { onAuthStateChanged } from 'firebase/auth';
+import { LazyImage, LazyVideo } from './LazyLoad';
 
 const Card = ({ post, userId, onClick }) => {
   const navigate = useNavigate();
@@ -148,7 +149,7 @@ const Card = ({ post, userId, onClick }) => {
     }
   };
 
-  const baseWidth = 250;
+  const baseWidth = 250; // Restore original size
   const height = baseWidth / aspectRatio;
 
   if (!post || !post.aiGeneratedUrl) {
@@ -225,31 +226,26 @@ const Card = ({ post, userId, onClick }) => {
           </button>
         </div>
       ) : isVideo ? (
-        <video
+        <LazyVideo
           ref={mediaRef}
           src={post.aiGeneratedUrl}
-          autoPlay
-          loop // Ensure video loops continuously
-          muted
-          playsInline
-          crossOrigin="anonymous"
-          preload="auto"
+          autoPlay={true}
+          loop={true}
+          muted={true}
+          controls={false}
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onError={(e) => {
-            console.error('Card - Video error:', e.nativeEvent);
+          onError={() => {
+            console.error('Card - Video error');
             setMediaError(true);
           }}
-        >
-          Your browser does not support the video tag.
-        </video>
+        />
       ) : (
-        <img
-          ref={mediaRef}
+        <LazyImage
           src={post.aiGeneratedUrl}
           alt="Post"
           style={{ width: '100%', height: '100%', objectFit: 'cover' }}
-          onError={(e) => {
-            console.error('Card - Image error:', e.nativeEvent);
+          onError={() => {
+            console.error('Card - Image error');
             setMediaError(true);
           }}
         />
