@@ -56,7 +56,7 @@ const Navbar = () => {
     { to: '/explore', icon: <FaCompass />, label: 'Explore' },
     { to: '/trending', icon: <FaFire />, label: 'Trending' },
     { to: '/upload', icon: <FaUpload />, label: 'Upload' },
-    { to: '/video', icon: <FaFilm />, label: 'Reels' },
+    { to: '/video', icon: <FaFilm />, label: 'Videos' },
     { to: `/profile/${user?.uid}`, icon: profilePic ? <img src={profilePic} alt="Profile" style={{ width: '24px', height: '24px', borderRadius: '50%', objectFit: 'cover' }} /> : <FaUser />, label: 'Profile' },
   ];
 

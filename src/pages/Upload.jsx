@@ -201,38 +201,65 @@ const Upload = () => {
 
     setError(null);
 
-    // Start upload in background and redirect immediately
+    // Store upload data in localStorage for progress tracking
+    const uploadData = {
+      postId: Date.now().toString(),
+      aiGeneratedFile: aiGeneratedFile.name,
+      originalFile: originalFile ? originalFile.name : null,
+      modelUsed,
+      promptUsed,
+      chatLink,
+      caption,
+      userId: user.uid,
+      username: user.displayName || 'gaurav1',
+      profilePic: user.photoURL || 'https://dummyimage.com/30x30/000/fff?text=User',
+      status: 'uploading',
+      progress: 0,
+      startTime: Date.now()
+    };
+    
+    localStorage.setItem('currentUpload', JSON.stringify(uploadData));
+
+    // Navigate to profile page immediately
+    navigate(`/profile/${user.uid}`, { 
+      state: { 
+        showUploadProgress: true,
+        uploadData: uploadData
+      } 
+    });
+
+    // Start upload in background
     const uploadPost = async () => {
       try {
-        const postId = Date.now().toString();
-        const startTime = Date.now();
+        const postId = uploadData.postId;
         
-        // Show progress popup and status bar
-        setShowProgressPopup(true);
-        setShowStatusBar(true);
-        setUploadProgress(10);
-        setEstimatedTime(30); // Estimate 30 seconds
+        // Update progress to 10%
+        uploadData.progress = 10;
+        localStorage.setItem('currentUpload', JSON.stringify(uploadData));
 
         // Upload AI-generated file
         const aiGeneratedRef = ref(storage, `posts/${user.uid}/${postId}/ai-generated/${aiGeneratedFile.name}`);
-        setUploadProgress(30);
         await uploadBytes(aiGeneratedRef, aiGeneratedFile);
         const aiGeneratedUrl = await getDownloadURL(aiGeneratedRef);
-        setUploadProgress(60);
+        
+        // Update progress to 50%
+        uploadData.progress = 50;
+        localStorage.setItem('currentUpload', JSON.stringify(uploadData));
 
         // Upload original file if provided
         let originalUrl = '';
         if (originalFile) {
           const originalRef = ref(storage, `posts/${user.uid}/${postId}/original/${originalFile.name}`);
-          setUploadProgress(70);
           await uploadBytes(originalRef, originalFile);
           originalUrl = await getDownloadURL(originalRef);
-          setUploadProgress(85);
+          
+          // Update progress to 80%
+          uploadData.progress = 80;
+          localStorage.setItem('currentUpload', JSON.stringify(uploadData));
         }
 
         // Create post document in the 'posts' collection
         const postRef = doc(db, 'posts', postId);
-        setUploadProgress(90);
         const post = {
           aiGeneratedUrl,
           originalUrl: originalUrl || '',
@@ -252,34 +279,27 @@ const Upload = () => {
         };
 
         await setDoc(postRef, post);
-        setUploadProgress(100);
+        
+        // Update progress to 100% and mark as completed
+        uploadData.progress = 100;
+        uploadData.status = 'completed';
+        localStorage.setItem('currentUpload', JSON.stringify(uploadData));
 
-        // Show success message
-        const uploadTime = Date.now() - startTime;
-        console.log(`Post uploaded successfully in ${uploadTime}ms`);
-        
-        // Update status to completed
-        setUploadStatus('completed');
-        
-        // Hide popup and status bar after 3 seconds
+        // Remove upload data after 5 seconds
         setTimeout(() => {
-          setShowProgressPopup(false);
-          setShowStatusBar(false);
-        }, 3000);
+          localStorage.removeItem('currentUpload');
+        }, 5000);
+
       } catch (err) {
         console.error('Failed to upload post:', err);
-        setUploadStatus('error');
-        setShowProgressPopup(false);
-        setShowStatusBar(false);
-        // Could show a toast notification here for errors
+        uploadData.status = 'error';
+        uploadData.error = err.message;
+        localStorage.setItem('currentUpload', JSON.stringify(uploadData));
       }
     };
 
     // Start upload in background
     uploadPost();
-
-    // Redirect to explore page immediately
-    navigate('/explore');
   };
 
   const handleCaptionChange = (e) => {

@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate, useLocation } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { doc, getDoc, updateDoc, collection, getDocs, query, where, writeBatch, getDocs as getDocsFirestore } from 'firebase/firestore';
 import { db, auth } from '../firebase/firebase';
@@ -8,13 +8,14 @@ import Card from '../components/Card';
 import ContributionCard from '../components/ContributionCard';
 import ContributionDetail from '../components/ContributionDetail';
 import ProfileHeader from '../components/ProfileHeader';
-import { FaLink, FaTh, FaLightbulb, FaBookmark } from 'react-icons/fa';
+import { FaLink, FaTh, FaLightbulb, FaBookmark, FaUpload, FaCheck, FaExclamationTriangle } from 'react-icons/fa';
 import { LazyImage } from '../components/LazyLoad';
 import Masonry from 'react-masonry-css';
 
 const Profile = () => {
   const { userId } = useParams();
   const navigate = useNavigate();
+  const location = useLocation();
   const [userData, setUserData] = useState(null);
   const [currentUser, setCurrentUser] = useState(null);
   const [view, setView] = useState('myPosts');
@@ -32,6 +33,7 @@ const Profile = () => {
   const [postsMap, setPostsMap] = useState({});
   const [selectedContribution, setSelectedContribution] = useState(null);
   const [showLinksPopup, setShowLinksPopup] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(null);
   const bioRef = useRef(null);
 
   useEffect(() => {
@@ -41,6 +43,38 @@ const Profile = () => {
         setIsFollowing(userData.followers.includes(user.uid));
       }
     });
+
+    // Check for upload progress from navigation state or localStorage
+    const checkUploadProgress = () => {
+      if (location.state?.showUploadProgress && location.state?.uploadData) {
+        setUploadProgress(location.state.uploadData);
+      } else {
+        const storedUpload = localStorage.getItem('currentUpload');
+        if (storedUpload) {
+          const uploadData = JSON.parse(storedUpload);
+          if (uploadData.userId === userId) {
+            setUploadProgress(uploadData);
+          }
+        }
+      }
+    };
+
+    // Monitor localStorage for upload progress updates
+    const handleStorageChange = (e) => {
+      if (e.key === 'currentUpload') {
+        if (e.newValue) {
+          const uploadData = JSON.parse(e.newValue);
+          if (uploadData.userId === userId) {
+            setUploadProgress(uploadData);
+          }
+        } else {
+          setUploadProgress(null);
+        }
+      }
+    };
+
+    checkUploadProgress();
+    window.addEventListener('storage', handleStorageChange);
 
     const fetchUserData = async () => {
       try {
@@ -152,8 +186,37 @@ const Profile = () => {
     };
 
     fetchUserData();
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, [userId, currentUser]);
+
+  // Monitor upload progress in real-time
+  useEffect(() => {
+    if (!uploadProgress) return;
+
+    const interval = setInterval(() => {
+      const storedUpload = localStorage.getItem('currentUpload');
+      if (storedUpload) {
+        const uploadData = JSON.parse(storedUpload);
+        if (uploadData.userId === userId) {
+          setUploadProgress(uploadData);
+          
+          // Remove progress card after completion or error
+          if (uploadData.status === 'completed' || uploadData.status === 'error') {
+            setTimeout(() => {
+              setUploadProgress(null);
+            }, 5000); // Show for 5 seconds after completion
+          }
+        }
+      } else {
+        setUploadProgress(null);
+      }
+    }, 500); // Check every 500ms
+
+    return () => clearInterval(interval);
+  }, [uploadProgress, userId]);
 
   const fetchFollowersList = async () => {
     if (!userData.followers || userData.followers.length === 0) {
@@ -469,6 +532,145 @@ const Profile = () => {
         setShowFollowingModal={handleShowFollowing}
         renderBio={renderBio}
       />
+
+      {/* Upload Progress Card */}
+      {uploadProgress && (
+        <motion.div
+          initial={{ opacity: 0, y: -20 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -20 }}
+          style={{
+            backgroundColor: '#1C1C1C',
+            borderRadius: '12px',
+            padding: '20px',
+            margin: '20px auto',
+            maxWidth: '600px',
+            border: '1px solid #333333',
+            position: 'relative',
+            overflow: 'hidden'
+          }}
+        >
+          <div style={{ display: 'flex', alignItems: 'center', gap: '15px', marginBottom: '15px' }}>
+            <div style={{
+              width: '40px',
+              height: '40px',
+              borderRadius: '50%',
+              backgroundColor: '#333333',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              flexShrink: 0
+            }}>
+              {uploadProgress.status === 'completed' ? (
+                <FaCheck style={{ color: '#00FF00', fontSize: '18px' }} />
+              ) : uploadProgress.status === 'error' ? (
+                <FaExclamationTriangle style={{ color: '#FF4444', fontSize: '18px' }} />
+              ) : (
+                <FaUpload style={{ color: '#FFFFFF', fontSize: '18px' }} />
+              )}
+            </div>
+            <div style={{ flex: 1 }}>
+              <h3 style={{ 
+                margin: 0, 
+                fontSize: '16px', 
+                fontWeight: '600',
+                color: uploadProgress.status === 'completed' ? '#00FF00' : 
+                       uploadProgress.status === 'error' ? '#FF4444' : '#FFFFFF'
+              }}>
+                {uploadProgress.status === 'completed' ? 'Upload Complete!' :
+                 uploadProgress.status === 'error' ? 'Upload Failed' :
+                 'Uploading Post...'}
+              </h3>
+              <p style={{ margin: '5px 0 0 0', fontSize: '14px', color: '#AAAAAA' }}>
+                {uploadProgress.aiGeneratedFile}
+              </p>
+            </div>
+          </div>
+
+          {/* Progress Bar */}
+          <div style={{
+            width: '100%',
+            height: '6px',
+            backgroundColor: '#333333',
+            borderRadius: '3px',
+            overflow: 'hidden',
+            marginBottom: '10px'
+          }}>
+            <motion.div
+              initial={{ width: 0 }}
+              animate={{ width: `${uploadProgress.progress}%` }}
+              transition={{ duration: 0.5, ease: 'easeOut' }}
+              style={{
+                height: '100%',
+                backgroundColor: uploadProgress.status === 'completed' ? '#00FF00' :
+                               uploadProgress.status === 'error' ? '#FF4444' : '#1DA1F2',
+                borderRadius: '3px'
+              }}
+            />
+          </div>
+
+          {/* Progress Text */}
+          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+            <span style={{ fontSize: '14px', color: '#AAAAAA' }}>
+              {uploadProgress.status === 'completed' ? 'Upload finished successfully' :
+               uploadProgress.status === 'error' ? uploadProgress.error || 'Upload failed' :
+               `${uploadProgress.progress}% complete`}
+            </span>
+            {uploadProgress.status === 'uploading' && (
+              <span style={{ fontSize: '12px', color: '#666666' }}>
+                {uploadProgress.progress < 30 ? 'Uploading files...' :
+                 uploadProgress.progress < 80 ? 'Processing...' :
+                 'Finalizing...'}
+              </span>
+            )}
+          </div>
+
+          {/* Post Preview */}
+          <div style={{
+            marginTop: '15px',
+            padding: '15px',
+            backgroundColor: '#000000',
+            borderRadius: '8px',
+            border: '1px solid #333333'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', marginBottom: '10px' }}>
+              <img
+                src={uploadProgress.profilePic}
+                alt="Profile"
+                style={{
+                  width: '30px',
+                  height: '30px',
+                  borderRadius: '50%',
+                  objectFit: 'cover'
+                }}
+              />
+              <span style={{ fontSize: '14px', fontWeight: '500' }}>
+                @{uploadProgress.username}
+              </span>
+            </div>
+            {uploadProgress.caption && (
+              <p style={{ fontSize: '14px', color: '#CCCCCC', margin: '0 0 10px 0' }}>
+                {uploadProgress.caption}
+              </p>
+            )}
+            <div style={{
+              width: '100%',
+              height: '200px',
+              backgroundColor: '#333333',
+              borderRadius: '8px',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              color: '#AAAAAA',
+              fontSize: '14px'
+            }}>
+              {uploadProgress.status === 'completed' ? 'Post uploaded successfully!' :
+               uploadProgress.status === 'error' ? 'Upload failed' :
+               'Uploading media...'}
+            </div>
+          </div>
+        </motion.div>
+      )}
 
       <div style={{ display: 'flex', justifyContent: 'center', marginBottom: '20px' }}>
         <div style={{
